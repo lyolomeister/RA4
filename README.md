@@ -56,13 +56,18 @@ resolution.
   narrow Split View) the tools become a bottom bar and the panel sits under
   the photo; the library opens as a sheet. A phone on its side puts the panel
   beside the photo instead.
-- **Settings** (the gear) holds the language, credits and licences, and the
-  diagnostics: timings, memory, a full-resolution test render.
+- **Settings** (the gear) holds the language, credits and the full licence
+  texts, and the diagnostics: timings, memory, a full-resolution test render.
 
 **Library and editing**
 - Import RAWs (or JPEG/HEIC/TIFF) **from Files or from Photos** (the original
   RAW when the photo has one); the **library** column shows each photo as it
   was last left, with Previous / Next in the top bar and ← → on a keyboard.
+- **Favourites**: tap the star on a thumbnail. **Sort** by name, date taken
+  (oldest first) or favourites first, or **drag** a thumbnail to put the
+  photos in an order of your own; Previous / Next follow it. Hold a
+  thumbnail to **delete** it from the library, with its edits — exports, and
+  the original in Photos or Files, stay.
 - Edits **save automatically** per photo and come back after a restart; the
   photo itself is never written. **Undo / Redo**, one step per slider drag.
 - **Photo information** on a see-through card over the picture: date and
@@ -88,11 +93,15 @@ resolution.
   Daylight, Cloudy, Shade, Tungsten, Fluorescent, or an eyedropper — so the
   film is exposed to a scene already balanced, and the lens's own correction
   where the RAW carries one. A change develops the photo again (about 1 s).
-- **34 stocks** from the Mac app's own catalogue: colour negatives, slide films
-  (scanned, no paper) and black-and-white films (printed on Ilford Multigrade).
-  Going from a slide film back to a negative prints again on the negative's
-  own paper (the Mac keeps the slide's scan until a paper is chosen); a
-  negative you set to "No print" yourself stays scanned.
+- **34 stocks** from the Mac app's own catalogue: colour negatives, reversal
+  (slide) films (scanned, no paper) and black-and-white films (printed on Ilford
+  Multigrade). Going from a reversal film back to a negative prints again on
+  the negative's own paper (the Mac keeps the slide's scan until a paper is
+  chosen); a negative you set to "No print" yourself stays scanned.
+- **Your own names for films and papers**: hold a film or a paper to rename it
+  (brand and name), or to restore its original name; Settings restores them
+  all. Only the name changes: the ISO, the look and the saved edits stay the
+  stock's own.
 - **Black and white**, ahead of the Mac app (whose engine has both and whose
   interface does not yet): a **colour filter on the lens** — Kodak Wratten
   yellow 8, yellow-green 11, deep yellow 12 and 15, orange 21, red 25, blue 47,
@@ -117,9 +126,9 @@ resolution.
   tint), exposure, contrast, highlights, shadows, black and white point,
   saturation — plus **vibrance**, which is new here.
 - **Export** in sRGB at full resolution as **JPEG** (quality 10–100), **PNG**
-  (8-bit) or **TIFF** (8-bit LZW or 16-bit ZIP), with the camera's EXIF (no
-  GPS), saved to Files and shareable to Photos or AirDrop. The panel shows the
-  **file's size before it is written**, estimated from the preview — within
+  (8-bit) or **TIFF** (8-bit LZW or 16-bit ZIP), with the camera's EXIF, make
+  and model (no GPS, no serial numbers), saved to Files and shareable to
+  Photos or AirDrop. The panel shows the **file's size before it is written**, estimated from the preview — within
   3.5 % of the real file in every format, measured on two pictures. (16-bit
   TIFF is ZIP rather than the Mac's LZW: on a grainy 16-bit print LZW made the
   file larger than no compression at all, 312 MB against 235 MB.)
@@ -171,13 +180,11 @@ Still missing compared with the Mac app, roughly in order of importance:
 1. **More adjustments:** brightness, tone curve, colour balance, vignette;
    a **histogram**.
 2. **Copy / paste / sync settings** across photos.
-3. **Export options:** PNG and 16-bit TIFF, other colour spaces, resizing,
-   recipes, **batch export**, a soft proof with a gamut warning.
+3. **Export options:** other colour spaces, resizing, recipes, **batch export**, a soft proof with a gamut warning.
 4. **Digital Intermediate** printing and "Don't apply film simulation".
-5. Film Edge and Date Back, half-frame pairs, more settings,
-   the full licence texts inside the app.
+5. Film Edge and Date Back, half-frame pairs, more settings.
 6. Smaller: draw a line to straighten, a full-resolution "before" when
-   zoomed, removing a photo from the library.
+   zoomed.
 
 ## Building
 
@@ -213,9 +220,13 @@ takes launch arguments that run without anyone tapping:
 | `--selftest <file>` | export it untouched, then adjusted |
 | `--selftest-film <file>` | export it on Tri-X, Velvia, and Portra on 120 with EDR |
 | `--selftest-library <file>` | check saving, undo, copies and the library |
+| `--selftest-organize <file>` | on two temporary copies of it: a favourite first, the name and date orders, a drag into an order of your own, then deleting the open copy and the other; puts the sort and favourites back |
 | `--selftest-info <file>` | the photo information card's rows, written to the results file |
-| `--selftest-export <file>` | every export format on two pictures: the estimate, the real file's size and what the file says it is, then the files deleted |
+| `--selftest-export <file>` | every export format on two pictures: the estimate, the real file's size and what the file says it is (camera, lens, no serial number), then the files deleted |
+| `--selftest-stale <file>` | a photo deleted in Files leaves its edits under its name: the same photo imported again keeps them, a different one under that name must not get them (on copies named `stale-test`) |
 | `--export-format jpeg\|png\|tiff8\|tiff16` | sets the Export panel's format (saved, like a tap), for screenshots |
+| `--open <file> --selftest-names [--keep-names]` | renames two stocks and checks the ISO and the wire id stay the catalogue's; without `--keep-names` it puts back exactly what was there |
+| `--open <file> --clear-test-names` | takes off only the names a `--keep-names` run left |
 | `--selftest-stocks <file>` | what choosing a film does to the print: slide → negative, a chosen scan → another negative, slide → black and white |
 | `--selftest-raws` | every unedited library photo at the Mac's defaults (lens correction off): what the decode says, the timings, a full JPEG at quality 95, a check that each file is its own photo's frame, and a race check (a camera change on one photo, the next opened at once) |
 | `--selftest-bw <file>` | Tri-X on Multigrade with each kind of lens filter and grades 00 and 5: the print's tones each time, three exports, then put back |
@@ -253,4 +264,7 @@ citing the science, cite spektrafilm.
 | film and paper profiles, print LUTs | CC BY-SA 4.0 |
 | metal-cpp | Apache-2.0 |
 
-The licence texts are in [`license/`](license/).
+The licence texts are in [`license/`](license/), and inside the app under
+Settings › Licences › Licence texts. The app's privacy manifest
+(`SpektraProbe/SpektraProbe/PrivacyInfo.xcprivacy`) declares that it tracks no
+one and collects no data.
