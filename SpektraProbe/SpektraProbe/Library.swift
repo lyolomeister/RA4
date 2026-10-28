@@ -351,10 +351,10 @@ enum LibrarySort: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .name: String(localized: "Name")
-        case .date: String(localized: "Date taken")
-        case .favorites: String(localized: "Favourites first")
-        case .custom: String(localized: "Custom order")
+        case .name: String(localized: "Name", bundle: .ui)
+        case .date: String(localized: "Date taken", bundle: .ui)
+        case .favorites: String(localized: "Favourites first", bundle: .ui)
+        case .custom: String(localized: "Custom order", bundle: .ui)
         }
     }
 }

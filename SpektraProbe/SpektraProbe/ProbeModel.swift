@@ -7,6 +7,7 @@
 //  Display P3 for the canvas, sRGB for a JPEG export — through the engine's
 //  own output transform.
 
+import Combine
 import ImageIO
 import Metal
 import PhotosUI
@@ -236,6 +237,10 @@ final class ProbeModel: ObservableObject {
     @Published private(set) var librarySort = LibrarySort.name
     @Published private(set) var favorites: Set<String> = []
     private var libraryIndex = LibraryIndex.load()
+    /// A change of language in Settings redraws every view that watches the
+    /// model, so text built in code (`String(localized:bundle: .ui)`) is
+    /// looked up again; SwiftUI's own `Text`s follow the locale by themselves.
+    private var languageChange: AnyCancellable?
 
     // MARK: geometry, viewer and camera decode
 
@@ -338,7 +343,9 @@ final class ProbeModel: ObservableObject {
         librarySort = libraryIndex.sort
         favorites = libraryIndex.favorites
         deviceLines = ProbeModel.describeDevice(device)
-        if renderer == nil { error = String(localized: "The canvas shaders did not load.") }
+        languageChange = LanguageSettings.shared.$localization.dropFirst().removeDuplicates()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+        if renderer == nil { error = String(localized: "The canvas shaders did not load.", bundle: .ui) }
         Task {
             await startEngine()
             refreshLibrary()
@@ -420,6 +427,12 @@ final class ProbeModel: ObservableObject {
         }
         if let name = value("--selftest-organize") {
             await runOrganizeSelfTest(LibraryPhoto(name: name))
+            return true
+        }
+        if let name = value("--selftest-language") {
+            await open(LibraryPhoto(name: name))
+            showingInfo = arguments.contains("--show-info")
+            await runLanguageSelfTest()
             return true
         }
         if let name = value("--selftest-stale") {
@@ -788,6 +801,32 @@ final class ProbeModel: ObservableObject {
         saveResults()
     }
 
+    /// `--selftest-language <file> [--show-settings] [--show-info]`: Chinese,
+    /// then English, then back to what was chosen before, 10 s each so the
+    /// Mac can take a screenshot of each; what code-built text says in each.
+    private func runLanguageSelfTest() async {
+        let language = LanguageSettings.shared
+        let original = language.choice
+        var lines = ["chosen at launch: \(original.rawValue) → \(language.localization); "
+                     + "system languages: \(AppLanguage.system.localization) from "
+                     + "\((CFPreferencesCopyValue("AppleLanguages" as CFString, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? [String])?.prefix(3).joined(separator: ", ") ?? "nothing")"]
+        func sample(_ step: String) {
+            lines.append("\(step): t=\(Date().formatted(.dateTime.hour().minute().second())) folder \(Bundle.ui.bundleURL.lastPathComponent), "
+                         + "name \(AppName.current), sort \(LibrarySort.date.title), "
+                         + "\"\(String(localized: "The canvas shaders did not load.", bundle: .ui))\", "
+                         + "own AppleLanguages \(UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleLanguages"] ?? "none")")
+        }
+        sample("start")
+        for step in [AppLanguage.chinese, .english, original] {
+            try? await Task.sleep(for: .seconds(10))
+            language.choose(step)
+            sample(step.rawValue)
+        }
+        lines.append(language.choice == original ? "put back: \(original.rawValue) ✓" : "put back ✗: \(language.choice.rawValue)")
+        exportLines = lines
+        saveResults()
+    }
+
     /// `--selftest-organize <file>`: favourites, the four sorts, a drag and two
     /// deletes, on two copies of `file` made for the test — never on the
     /// person's own photos. The library's sort and favourites are put back.
@@ -953,7 +992,7 @@ final class ProbeModel: ObservableObject {
                 PhotoInfo.read(url: photo.url, asShot: asShot, pixels: sourceSize)
             }.value
             func row(_ label: String) -> String {
-                info.sections.flatMap(\.rows).first { $0.label == String(localized: String.LocalizationValue(label)) }?.value ?? "?"
+                info.sections.flatMap(\.rows).first { $0.label == String(localized: String.LocalizationValue(label), bundle: .ui) }?.value ?? "?"
             }
             lines.append("\(photo.name): \(row("Camera")), \(row("Lens")), \(row("Format"))")
             lines.append(String(format: "  frame %.0f × %.0f; opened in %.2f s; %@; %@; as shot %@; lens correction in the file: %@",
@@ -1031,7 +1070,7 @@ final class ProbeModel: ObservableObject {
     // MARK: steps
 
     func startEngine() async {
-        busy = String(localized: "Starting the engine…")
+        busy = String(localized: "Starting the engine…", bundle: .ui)
         let device = self.device, box = self.box
         do {
             let caps = try await onEngine { () -> [String: Any] in
@@ -1045,7 +1084,7 @@ final class ProbeModel: ObservableObject {
             deviceLines.append("Engine: \(Engine.buildInfo)")
             deviceLines.append("Engine core: \(core) on \(gpu) — started OK")
         } catch {
-            self.error = String(localized: "The engine did not start: \(String(describing: error))")
+            self.error = String(localized: "The engine did not start: \(String(describing: error))", bundle: .ui)
         }
         busy = nil
         saveResults()
@@ -1068,7 +1107,7 @@ final class ProbeModel: ObservableObject {
         let settings = saved?.settings ?? FilmSettings(), edge = previewEdge
         let camera = saved?.camera ?? CameraDecode()
         let device = self.device, box = self.box, progress = progressReporter()
-        busy = String(localized: "Opening \(photo.name)…")
+        busy = String(localized: "Opening \(photo.name)…", bundle: .ui)
         do {
             let outcome = try await onEngine {
                 try ProbeModel.openAndPreview(photo.url, settings: settings, camera: camera, edge: edge,
@@ -1125,7 +1164,7 @@ final class ProbeModel: ObservableObject {
                     ?? "Saved edits: none — the Mac's defaults for a new frame",
             ]
         } catch {
-            self.error = String(localized: "Could not open \(photo.name): \(String(describing: error))")
+            self.error = String(localized: "Could not open \(photo.name): \(String(describing: error))", bundle: .ui)
             await closeIfEngineLeft()
         }
         busy = nil
@@ -1395,7 +1434,7 @@ final class ProbeModel: ObservableObject {
         do {
             try Library.remove(photo)
         } catch {
-            self.error = String(localized: "Could not delete \(photo.name): \(error.localizedDescription)")
+            self.error = String(localized: "Could not delete \(photo.name): \(error.localizedDescription)", bundle: .ui)
             refreshLibrary()
             return
         }
@@ -1462,8 +1501,8 @@ final class ProbeModel: ObservableObject {
     func importFiles(_ urls: [URL]) async {
         guard !urls.isEmpty else { return }
         await waitUntilIdle()
-        busy = urls.count == 1 ? String(localized: "Importing 1 photo from Files…")
-                               : String(localized: "Importing \(urls.count) photos from Files…")
+        busy = urls.count == 1 ? String(localized: "Importing 1 photo from Files…", bundle: .ui)
+                               : String(localized: "Importing \(urls.count) photos from Files…", bundle: .ui)
         let results = await Task.detached(priority: .userInitiated) {
             urls.map { url in (url, Result { try Library.importCopy(of: url) }) }
         }.value
@@ -1473,7 +1512,7 @@ final class ProbeModel: ObservableObject {
             switch result {
             case .success(let photo): imported.append(photo)
             case .failure(let failure):
-                error = String(localized: "Could not import \(url.lastPathComponent): \(failure.localizedDescription)")
+                error = String(localized: "Could not import \(url.lastPathComponent): \(failure.localizedDescription)", bundle: .ui)
             }
         }
         await finishImport(imported)
@@ -1485,8 +1524,8 @@ final class ProbeModel: ObservableObject {
     func importFromPhotos(_ items: [PhotosPickerItem]) async {
         guard !items.isEmpty else { return }
         await waitUntilIdle()
-        busy = items.count == 1 ? String(localized: "Importing 1 photo from Photos…")
-                                : String(localized: "Importing \(items.count) photos from Photos…")
+        busy = items.count == 1 ? String(localized: "Importing 1 photo from Photos…", bundle: .ui)
+                                : String(localized: "Importing \(items.count) photos from Photos…", bundle: .ui)
         var imported: [LibraryPhoto] = []
         var failed = 0
         for item in items {
@@ -1498,8 +1537,8 @@ final class ProbeModel: ObservableObject {
         }
         busy = nil
         if failed > 0 {
-            error = failed == 1 ? String(localized: "1 photo could not be imported from Photos.")
-                                : String(localized: "\(failed) photos could not be imported from Photos.")
+            error = failed == 1 ? String(localized: "1 photo could not be imported from Photos.", bundle: .ui)
+                                : String(localized: "\(failed) photos could not be imported from Photos.", bundle: .ui)
         }
         await finishImport(imported)
     }
@@ -1544,7 +1583,7 @@ final class ProbeModel: ObservableObject {
                 show(outcome)
                 readLatitude(outcome.latitude)
             } catch {
-                self.error = String(localized: "Could not apply the change: \(String(describing: error))")
+                self.error = String(localized: "Could not apply the change: \(String(describing: error))", bundle: .ui)
                 break
             }
         } while pendingPush
@@ -1632,7 +1671,7 @@ final class ProbeModel: ObservableObject {
                                                             fallback: issue["message"] as? String)
             }
         } catch {
-            placementNote = String(localized: "Scene Placement failed: \(String(describing: error))")
+            placementNote = String(localized: "Scene Placement failed: \(String(describing: error))", bundle: .ui)
         }
         highlightDraft = settings.placement.highlightPullBack
         shadowDraft = settings.placement.shadowPullBack
@@ -1643,19 +1682,19 @@ final class ProbeModel: ObservableObject {
         let top = side != "shadow"
         switch code {
         case "pull_back_below_minimum":
-            return top ? String(localized: "Pull back further: the scene's brightest part is still past the latitude's edge.")
-                       : String(localized: "Pull back further: the scene's darkest part is still past the latitude's edge.")
+            return top ? String(localized: "Pull back further: the scene's brightest part is still past the latitude's edge.", bundle: .ui)
+                       : String(localized: "Pull back further: the scene's darkest part is still past the latitude's edge.", bundle: .ui)
         case "room_below_minimum":
-            return top ? String(localized: "Pull back a little more: this close to the latitude's edge the highlights would turn too sharply.")
-                       : String(localized: "Pull back a little more: this close to the latitude's edge the shadows would turn too sharply.")
+            return top ? String(localized: "Pull back a little more: this close to the latitude's edge the highlights would turn too sharply.", bundle: .ui)
+                       : String(localized: "Pull back a little more: this close to the latitude's edge the shadows would turn too sharply.", bundle: .ui)
         case "out_of_range":
-            return String(localized: "Pull back less: this is further than the curve can reach.")
+            return String(localized: "Pull back less: this is further than the curve can reach.", bundle: .ui)
         case "pull_back_exceeds_max_lift":
-            return String(localized: "Pull back less: this is past the most the shadows can be lifted.")
+            return String(localized: "Pull back less: this is past the most the shadows can be lifted.", bundle: .ui)
         case "knees_cross":
-            return String(localized: "The highlight and shadow curves would cross: pull back less on one side.")
+            return String(localized: "The highlight and shadow curves would cross: pull back less on one side.", bundle: .ui)
         default:
-            return fallback.map { String(localized: "Not applied: \($0)") } ?? String(localized: "Not applied.")
+            return fallback.map { String(localized: "Not applied: \($0)", bundle: .ui) } ?? String(localized: "Not applied.", bundle: .ui)
         }
     }
 
@@ -1696,7 +1735,7 @@ final class ProbeModel: ObservableObject {
         let film = settings.filmStock, paper = settings.printStock, options = exportOptions
         let uniforms = adjustments.uniforms, box = self.box, device = self.device, geometry = self.geometry
         let out = geometry.outputSize(for: sourceSize)
-        busy = String(format: String(localized: "Exporting %.1f MP as sRGB %@…"),
+        busy = String(format: String(localized: "Exporting %.1f MP as sRGB %@…", bundle: .ui),
                       Double(out.width * out.height) / 1e6, options.summary)
         let entries = backgroundEntries
         do {
@@ -1711,7 +1750,7 @@ final class ProbeModel: ObservableObject {
                 throw Engine.Failure(description: "the app left the screen")
             }
             lastExport = outcome.url
-            lastExportSummary = String(format: String(localized: "%d × %d · %.1f MB · %@"),
+            lastExportSummary = String(format: String(localized: "%d × %d · %.1f MB · %@", bundle: .ui),
                                        outcome.width, outcome.height,
                                        Double(outcome.bytes) / 1_000_000, options.summary)
             exportLines = [
@@ -1727,8 +1766,8 @@ final class ProbeModel: ObservableObject {
             ]
         } catch {
             self.error = backgroundEntries != entries
-                ? String(localized: "The export stopped when RA4 left the screen, where apps may not use the graphics processor. Export it again.")
-                : String(localized: "Export failed: \(String(describing: error))")
+                ? String(localized: "The export stopped when RA4 left the screen, where apps may not use the graphics processor. Export it again.", bundle: .ui)
+                : String(localized: "Export failed: \(String(describing: error))", bundle: .ui)
         }
         busy = nil
         saveResults()
@@ -1739,7 +1778,7 @@ final class ProbeModel: ObservableObject {
         guard hasPhoto, busy == nil, let opened else { return }
         error = nil
         let film = settings.filmStock, paper = settings.printStock, box = self.box
-        busy = String(format: String(localized: "Rendering %.1f MP at full resolution…"), Double(opened.width * opened.height) / 1e6)
+        busy = String(format: String(localized: "Rendering %.1f MP at full resolution…", bundle: .ui), Double(opened.width * opened.height) / 1e6)
         do {
             let outcome = try await onEngine {
                 try ProbeModel.renderFullTier(file: opened.file, width: opened.width, height: opened.height,
@@ -1760,7 +1799,7 @@ final class ProbeModel: ObservableObject {
             lines.append("Film / paper: \(StockCatalog.shared.name(film)) / \(StockCatalog.shared.name(paper))")
             fullLines = lines
         } catch {
-            self.error = String(localized: "Full render could not start: \(String(describing: error))")
+            self.error = String(localized: "Full render could not start: \(String(describing: error))", bundle: .ui)
         }
         busy = nil
         saveResults()
@@ -1932,8 +1971,8 @@ final class ProbeModel: ObservableObject {
             // an open cannot slip in between: while another photo is opening,
             // this one's reread is dropped (its edit is already saved with it).
             if (camera == appliedCamera && !force) || current != photo || opening || !hasPhoto { break }
-            busy = force ? String(localized: "Developing the photo again…")
-                         : String(localized: "Developing with the new white balance…")
+            busy = force ? String(localized: "Developing the photo again…", bundle: .ui)
+                         : String(localized: "Developing with the new white balance…", bundle: .ui)
             force = false
             let started = CFAbsoluteTimeGetCurrent()
             do {
@@ -1964,7 +2003,7 @@ final class ProbeModel: ObservableObject {
                                           camera.applied(asShot: asShot).tint, camera.lensCorrection ? "on" : "off",
                                           CFAbsoluteTimeGetCurrent() - started))
             } catch {
-                self.error = String(localized: "Could not apply the white balance: \(String(describing: error))")
+                self.error = String(localized: "Could not apply the white balance: \(String(describing: error))", bundle: .ui)
                 await closeIfEngineLeft()
                 break
             }
@@ -2083,7 +2122,7 @@ final class ProbeModel: ObservableObject {
         let local = url
         outcome.sourceMetadata = ImageExport.sourceMetadata(of: local)
 
-        progress(String(localized: "Decoding the RAW and opening it in the engine…"))
+        progress(String(localized: "Decoding the RAW and opening it in the engine…", bundle: .ui))
         InFlight.begin(stage: "decoding and opening", details: ["file": outcome.file])
         defer { InFlight.end() }
         let sampler = PeakSampler()
@@ -2144,7 +2183,7 @@ final class ProbeModel: ObservableObject {
         outcome.display = try transform(box: box, source: outcome.workingSpace, targetName: "Display P3",
                                         space: CGColorSpace(name: CGColorSpace.displayP3)!, device: device)
 
-        progress(String(localized: "Rendering the preview…"))
+        progress(String(localized: "Rendering the preview…", bundle: .ui))
         outcome.preview = try preview(engine: engine)
         outcome.latitude = (try? engine.sceneLatitude([:])) ?? [:]
         box.sessionFile = url

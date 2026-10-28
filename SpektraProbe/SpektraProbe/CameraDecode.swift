@@ -35,13 +35,13 @@ struct CameraDecode: Codable, Equatable, Sendable {
 
         var title: String {
             switch self {
-            case .asShot: String(localized: "As Shot")
-            case .daylight: String(localized: "Daylight")
-            case .cloudy: String(localized: "Cloudy")
-            case .shade: String(localized: "Shade")
-            case .tungsten: String(localized: "Tungsten")
-            case .fluorescent: String(localized: "Fluorescent")
-            case .custom: String(localized: "Custom")
+            case .asShot: String(localized: "As Shot", bundle: .ui)
+            case .daylight: String(localized: "Daylight", bundle: .ui)
+            case .cloudy: String(localized: "Cloudy", bundle: .ui)
+            case .shade: String(localized: "Shade", bundle: .ui)
+            case .tungsten: String(localized: "Tungsten", bundle: .ui)
+            case .fluorescent: String(localized: "Fluorescent", bundle: .ui)
+            case .custom: String(localized: "Custom", bundle: .ui)
             }
         }
 

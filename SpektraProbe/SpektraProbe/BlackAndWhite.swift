@@ -30,29 +30,29 @@ enum LensFilter: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var title: String {
         switch self {
-        case .none: String(localized: "None")
-        case .w8: String(localized: "Yellow 8")
-        case .w11: String(localized: "Yellow-green 11")
-        case .w12: String(localized: "Deep yellow 12")
-        case .w15: String(localized: "Deep yellow 15")
-        case .w21: String(localized: "Orange 21")
-        case .w25: String(localized: "Red 25")
-        case .w47: String(localized: "Blue 47")
-        case .w58: String(localized: "Green 58")
+        case .none: String(localized: "None", bundle: .ui)
+        case .w8: String(localized: "Yellow 8", bundle: .ui)
+        case .w11: String(localized: "Yellow-green 11", bundle: .ui)
+        case .w12: String(localized: "Deep yellow 12", bundle: .ui)
+        case .w15: String(localized: "Deep yellow 15", bundle: .ui)
+        case .w21: String(localized: "Orange 21", bundle: .ui)
+        case .w25: String(localized: "Red 25", bundle: .ui)
+        case .w47: String(localized: "Blue 47", bundle: .ui)
+        case .w58: String(localized: "Green 58", bundle: .ui)
         }
     }
 
     /// What it does to a black-and-white picture, in a photographer's words.
     var effect: String {
         switch self {
-        case .none: String(localized: "Every colour turns grey as the film sees it.")
-        case .w8: String(localized: "Darkens a blue sky a little, so clouds stand out — the classic outdoor filter.")
-        case .w11: String(localized: "Like yellow, and lightens foliage; flatters skin outdoors.")
-        case .w12, .w15: String(localized: "Darkens a blue sky more and cuts haze.")
-        case .w21: String(localized: "A dramatic sky, lighter skin and brick, less haze.")
-        case .w25: String(localized: "A very dark sky and strong clouds; skin and red lips go pale.")
-        case .w47: String(localized: "Lightens blue and darkens red and green: more haze, a moody look.")
-        case .w58: String(localized: "Lightens foliage, darkens skin and red.")
+        case .none: String(localized: "Every colour turns grey as the film sees it.", bundle: .ui)
+        case .w8: String(localized: "Darkens a blue sky a little, so clouds stand out — the classic outdoor filter.", bundle: .ui)
+        case .w11: String(localized: "Like yellow, and lightens foliage; flatters skin outdoors.", bundle: .ui)
+        case .w12, .w15: String(localized: "Darkens a blue sky more and cuts haze.", bundle: .ui)
+        case .w21: String(localized: "A dramatic sky, lighter skin and brick, less haze.", bundle: .ui)
+        case .w25: String(localized: "A very dark sky and strong clouds; skin and red lips go pale.", bundle: .ui)
+        case .w47: String(localized: "Lightens blue and darkens red and green: more haze, a moody look.", bundle: .ui)
+        case .w58: String(localized: "Lightens foliage, darkens skin and red.", bundle: .ui)
         }
     }
 }

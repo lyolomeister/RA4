@@ -8,10 +8,10 @@ import SwiftUI
 struct SettingsSheet: View {
     @ObservedObject var model: ProbeModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
     @State private var copied = false
     @AppStorage(EnlargerTransition.enabledKey) private var enlargerAnimation = true
     @ObservedObject private var names = StockNames.shared
+    @ObservedObject private var language = LanguageSettings.shared
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -40,12 +40,19 @@ struct SettingsSheet: View {
                 }
 
                 Section {
-                    Text("RA4 follows your iPad's language: English or Simplified Chinese.")
-                    Button("Change the language in Settings") {
-                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    Picker(selection: Binding(get: { language.choice }, set: { language.choose($0) })) {
+                        ForEach(AppLanguage.allCases) { option in
+                            Text(verbatim: option.title).tag(option)
+                        }
+                    } label: {
+                        Text("Language")
                     }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
                 } header: {
                     Text("Language")
+                } footer: {
+                    Text("Follow system uses your device's language when it is English or Simplified Chinese, and English otherwise. A few of iOS's own buttons and screens change the next time RA4 opens.")
                 }
 
                 Section {
@@ -120,6 +127,13 @@ struct SettingsSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        // Built again in a new language: seen on the iPad, the bar's title and
+        // the picker's own rows kept the old one while the rest changed. The
+        // locale is set here too, not only inherited from the app's root: a
+        // sheet gets the root's a moment later, so the rebuilt title was one
+        // language behind.
+        .environment(\.locale, language.locale)
+        .id(language.localization)
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
     }

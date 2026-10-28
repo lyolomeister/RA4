@@ -77,7 +77,7 @@ struct ExportOptions: Codable, Equatable, Sendable {
 
     /// "JPEG, quality 95", "PNG 8-bit", "TIFF 16-bit".
     var summary: String {
-        format == .jpeg ? String(format: String(localized: "JPEG, quality %.0f"), quality)
+        format == .jpeg ? String(format: String(localized: "JPEG, quality %.0f", bundle: .ui), quality)
                         : "\(format.rawValue) \(bits)-bit"
     }
 
@@ -253,7 +253,7 @@ struct ExportOptionsSection: View {
             Button {
                 Task { await model.export() }
             } label: {
-                Label(String(format: String(localized: "Export %@"), o.format.rawValue),
+                Label(String(format: String(localized: "Export %@", bundle: .ui), o.format.rawValue),
                       systemImage: "square.and.arrow.up")
             }
             .buttonStyle(WideButtonStyle(prominent: true))

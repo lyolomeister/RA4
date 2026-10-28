@@ -320,8 +320,8 @@ struct ContentView: View {
     private var processLine: String {
         let s = model.settings
         let film = names.label(s.filmStock).name
-        if s.filmIsPositive { return film + " · " + String(localized: "reversal, scanned") }
-        if s.scanFilm { return film + " · " + String(localized: "negative, scanned") }
+        if s.filmIsPositive { return film + " · " + String(localized: "reversal, scanned", bundle: .ui) }
+        if s.scanFilm { return film + " · " + String(localized: "negative, scanned", bundle: .ui) }
         return film + " → " + names.label(s.printStock).name
     }
 

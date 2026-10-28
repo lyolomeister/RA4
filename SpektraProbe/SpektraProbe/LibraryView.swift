@@ -235,8 +235,8 @@ struct LibraryCell: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: photo.name
-                                 + (isFavourite ? ", " + String(localized: "favourite") : "")
-                                 + (isEdited ? ", " + String(localized: "edited") : "")))
+                                 + (isFavourite ? ", " + String(localized: "favourite", bundle: .ui) : "")
+                                 + (isEdited ? ", " + String(localized: "edited", bundle: .ui) : "")))
         .accessibilityAddTraits(isOpen ? .isSelected : [])
     }
 }

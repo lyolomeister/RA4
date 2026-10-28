@@ -81,7 +81,7 @@ struct CropPanel: View {
         guard size.width > 1 else { return "—" }
         let out = g.outputSize(for: size)
         let w = Int(out.width), h = Int(out.height)
-        return g.isIdentity ? "\(w) × \(h) · " + String(localized: "full frame")
+        return g.isIdentity ? "\(w) × \(h) · " + String(localized: "full frame", bundle: .ui)
                             : String(format: "%d × %d · %.1f MP", w, h, Double(w * h) / 1_000_000)
     }
 }

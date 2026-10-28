@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		CC00000000000000000000A7 /* PhotoInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A7 /* PhotoInfo.swift */; };
 		CC00000000000000000000A8 /* Licences.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A8 /* Licences.swift */; };
+		CC00000000000000000000AA /* AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000AA /* AppLanguage.swift */; };
 		CC00000000000000000000A9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A9 /* PrivacyInfo.xcprivacy */; };
 		CC00000000000000000000A6 /* BlackAndWhite.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A6 /* BlackAndWhite.swift */; };
 		CC00000000000000000000A5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A5 /* Assets.xcassets */; };
@@ -44,6 +45,7 @@
 /* Begin PBXFileReference section */
 		BB00000000000000000000A7 /* PhotoInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInfo.swift; sourceTree = "<group>"; };
 		BB00000000000000000000A8 /* Licences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Licences.swift; sourceTree = "<group>"; };
+		BB00000000000000000000AA /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
 		BB00000000000000000000A9 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BB00000000000000000000A6 /* BlackAndWhite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlackAndWhite.swift; sourceTree = "<group>"; };
 		BB00000000000000000000A5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -126,6 +128,7 @@
 				BB00000000000000000000A6 /* BlackAndWhite.swift */,
 				BB00000000000000000000A7 /* PhotoInfo.swift */,
 				BB00000000000000000000A8 /* Licences.swift */,
+				BB00000000000000000000AA /* AppLanguage.swift */,
 				BB0000000000000000000019 /* LibraryView.swift */,
 				BB0000000000000000000018 /* Theme.swift */,
 				BB0000000000000000000003 /* ProbeModel.swift */,
@@ -258,6 +261,7 @@
 				CC00000000000000000000A6 /* BlackAndWhite.swift in Sources */,
 				CC00000000000000000000A7 /* PhotoInfo.swift in Sources */,
 				CC00000000000000000000A8 /* Licences.swift in Sources */,
+				CC00000000000000000000AA /* AppLanguage.swift in Sources */,
 				CC0000000000000000000017 /* LibraryView.swift in Sources */,
 				CC0000000000000000000016 /* Theme.swift in Sources */,
 				CC0000000000000000000003 /* ProbeModel.swift in Sources */,

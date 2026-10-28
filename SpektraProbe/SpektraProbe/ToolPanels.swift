@@ -181,7 +181,7 @@ struct FilmPanel: View {
     }
 
     private func paperName(_ s: FilmSettings) -> String {
-        if s.filmIsPositive || s.scanFilm { return String(localized: "No print (scan the film)") }
+        if s.filmIsPositive || s.scanFilm { return String(localized: "No print (scan the film)", bundle: .ui) }
         return names.label(s.printStock).full
     }
 }
@@ -326,7 +326,7 @@ struct ExposurePanel: View {
     }
 
     private static let pullBack: (Double) -> String = {
-        $0 == 0 ? String(localized: "off") : String(format: String(localized: "%.2f stops"), $0)
+        $0 == 0 ? String(localized: "off", bundle: .ui) : String(format: String(localized: "%.2f stops", bundle: .ui), $0)
     }
 }
 
@@ -371,19 +371,19 @@ struct LatitudeChart: View {
                 .frame(height: 62)
                 HStack(spacing: 16) {
                     legend(colour: Theme.accent.opacity(0.6),
-                           text: String(format: String(localized: "Film and paper: %.1f stops"), r.stops))
+                           text: String(format: String(localized: "Film and paper: %.1f stops", bundle: .ui), r.stops))
                     legend(colour: Theme.text,
-                           text: String(format: String(localized: "Scene: %.1f stops"),
+                           text: String(format: String(localized: "Scene: %.1f stops", bundle: .ui),
                                         r.sceneBrightestEV - r.sceneDarkestEV))
                 }
                 let below = max(0, r.filmShadowEV - r.sceneDarkestEV)
                 let above = max(0, r.sceneBrightestEV - r.filmHighlightEV)
                 Caption(verbatim: below == 0 && above == 0
-                        ? String(localized: "The whole scene fits on the film.")
-                        : String(format: String(localized: "Outside the film: %.1f stops in the shadows, %.1f in the highlights."),
+                        ? String(localized: "The whole scene fits on the film.", bundle: .ui)
+                        : String(format: String(localized: "Outside the film: %.1f stops in the shadows, %.1f in the highlights.", bundle: .ui),
                                  below, above))
                 if let h = r.suggestedHighlight, let s = r.suggestedShadow, h.isFinite, s.isFinite {
-                    Caption(verbatim: String(format: String(localized: "Suggested pull-back: highlights %.2f, shadows %.2f stops."),
+                    Caption(verbatim: String(format: String(localized: "Suggested pull-back: highlights %.2f, shadows %.2f stops.", bundle: .ui),
                                              h, s))
                 }
             } else {
@@ -429,7 +429,7 @@ struct EffectsPanel: View {
             ParamSlider(title: "Side length", value: Binding(get: { s.sideLengthMM },
                                                                set: { model.setSideLength($0) }),
                         range: 4...120, step: 0.5, resetValue: 24, format: { String(format: "%.1f mm", $0) })
-            Caption(verbatim: String(format: String(localized: "Long edge sent to the engine: %.1f mm. Grain and halation are sized in real micrometres, so a smaller format shows coarser grain. Moving Side length makes the type Custom."),
+            Caption(verbatim: String(format: String(localized: "Long edge sent to the engine: %.1f mm. Grain and halation are sized in real micrometres, so a smaller format shows coarser grain. Moving Side length makes the type Custom.", bundle: .ui),
                                      s.filmFormatMM))
         }
         .disabled(model.busy != nil)
