@@ -139,7 +139,7 @@
 "RA4 follows your iPad's language: English or Simplified Chinese." = "RA4 跟随 iPad 的语言：英文或简体中文。";
 "Change the language in Settings" = "在“设置”中更改语言";
 "Credits" = "致谢";
-"A personal, unofficial port of SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project." = "这是 Hanze Qiu 的 SpektraLab 的个人非官方移植版。SpektraLab 是 Andrea Volpato 的 spektrafilm 的原生 C++ 与 Metal 移植，RA4 使用其胶片模型、色彩配置与印相 LUT 进行渲染。黑白配置由 Hanze Qiu 制作。本应用与上述两个项目均无关联，也未获其认可。";
+"Built on SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project." = "基于 Hanze Qiu 的 SpektraLab 打造。SpektraLab 是 Andrea Volpato 的 spektrafilm 的原生 C++ 与 Metal 移植，RA4 使用其胶片模型、色彩配置与印相 LUT 进行渲染。黑白配置由 Hanze Qiu 制作。本应用与上述两个项目均无关联，也未获其认可。";
 "RA4 on GitHub" = "GitHub 上的 RA4";
 "Licences" = "许可证";
 "The app and the engine" = "应用与引擎";

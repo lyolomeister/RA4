@@ -2,19 +2,21 @@
   <img src="SpektraProbe/SpektraProbe/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="180" alt="The RA4 Light Lab logo: light from an enlarger falling through a print and spreading into a spectrum">
 </p>
 
-# RA4 Light Lab · RA4追光暗房 — SpektraLab's film simulation on iPad (a personal port, in progress)
+# RA4 Light Lab · RA4追光暗房 — spectral film simulation for iPad and iPhone
 
-A personal, unofficial port of [SpektraLab](https://github.com/JamesQiu2005/SpektraLab)'s
-spectral film simulation to iPad (and iPhone), as an app called **RA4 Light Lab**
-(**RA4追光暗房** on an iPad set to Chinese) — named after RA-4, the colour print
-process whose paper it simulates. It runs the original's C++/Metal film engine, **unmodified**,
-on the iPad's GPU: a RAW goes through a virtual film negative and a print, with
-its grain, halation and paper, in a second or two at full resolution.
+**RA4 Light Lab** (**RA4追光暗房** in Chinese) brings
+[SpektraLab](https://github.com/JamesQiu2005/SpektraLab)'s spectral film
+simulation to iPad and iPhone. It is named after RA-4, the colour print process
+whose paper it simulates. It runs SpektraLab's C++/Metal film engine,
+**unmodified**, on the device's GPU: a RAW goes through a virtual film negative
+and a print, with its grain, halation and paper, in a second or two at full
+resolution.
 
-> Not affiliated with or endorsed by SpektraLab or spektrafilm. For the
-> finished macOS app, see the [original project](https://github.com/JamesQiu2005/SpektraLab).
-> This branch, `ios-port`, is the iPad work; `main` is an
-> untouched copy of the original.
+> Built on SpektraLab by Hanze Qiu and spektrafilm by Andrea Volpato, and
+> independent of both: neither project endorses it. For the macOS app, see
+> [SpektraLab](https://github.com/JamesQiu2005/SpektraLab). This branch,
+> `ios-port`, is the iPad and iPhone work; `main` is an untouched copy of
+> SpektraLab.
 
 ## Status
 

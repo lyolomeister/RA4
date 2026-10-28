@@ -56,7 +56,7 @@ struct SettingsSheet: View {
                 }
 
                 Section {
-                    Text("A personal, unofficial port of SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project.")
+                    Text("Built on SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project.")
                         .font(.callout)
                     Link(destination: URL(string: "https://github.com/lyolomeister/SpektraLab")!) {
                         Label("RA4 on GitHub", systemImage: "arrow.up.right.square")
