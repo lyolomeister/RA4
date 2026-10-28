@@ -50,8 +50,10 @@ resolution.
 - Films are **tiles** (maker, name, speed); the Camera panel **draws the
   scene's range against the film's latitude**. Sliders fill from zero, and
   the white-balance ones are colour ramps.
-- **English or Simplified Chinese**, following the iPad's language (the Mac
-  app's Chinese wording; film and paper names stay English, as there).
+- **English or Simplified Chinese**, chosen in Settings — or following the
+  system — and switched at once, without leaving the app (the Mac app's
+  Chinese wording; film and paper names stay English, as there). The choice
+  is the same one as iOS's own Settings › Apps › RA4 › Language.
 - On an **iPhone** (and the iPhone Duo, folded or open, or an iPad in a
   narrow Split View) the tools become a bottom bar and the panel sits under
   the photo; the library opens as a sheet. A phone on its side puts the panel
@@ -223,6 +225,7 @@ takes launch arguments that run without anyone tapping:
 | `--selftest-organize <file>` | on two temporary copies of it: a favourite first, the name and date orders, a drag into an order of your own, then deleting the open copy and the other; puts the sort and favourites back |
 | `--selftest-info <file>` | the photo information card's rows, written to the results file |
 | `--selftest-export <file>` | every export format on two pictures: the estimate, the real file's size and what the file says it is (camera, lens, no serial number), then the files deleted |
+| `--selftest-language <file> [--show-settings] [--show-info]` | Chinese, then English, then back to the choice it found, 10 s apart for screenshots; what text built in code says in each |
 | `--selftest-stale <file>` | a photo deleted in Files leaves its edits under its name: the same photo imported again keeps them, a different one under that name must not get them (on copies named `stale-test`) |
 | `--export-format jpeg\|png\|tiff8\|tiff16` | sets the Export panel's format (saved, like a tap), for screenshots |
 | `--open <file> --selftest-names [--keep-names]` | renames two stocks and checks the ISO and the wire id stay the catalogue's; without `--keep-names` it puts back exactly what was there |
