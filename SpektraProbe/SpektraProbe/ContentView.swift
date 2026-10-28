@@ -1,6 +1,15 @@
-//  ContentView.swift — the canvas, and a panel in the Mac app's order: film and
-//  paper, camera, the film's effects, its format, Scene Placement, the print,
-//  then the adjustments, export and the diagnostics the probe has always shown.
+//  ContentView.swift — the window: canvas first.
+//
+//  The photograph takes the screen. A strip of six tools on the right, in
+//  darkroom order (the negative: film, exposure, effects; the print; the
+//  finish: adjust, export), opens one panel at a time beside it, or none. The
+//  library is a column on the left that can be put away. On an iPhone, or an
+//  iPad in a narrow window, the strip becomes a bar along the bottom and the
+//  panel sits between it and the picture.
+//
+//  The canvas owns every touch on the picture (`CanvasView`): pinch to zoom,
+//  double-tap for 100 %, hold for the original, swipe sideways at fit for the
+//  next or previous photo, and a single tap shows the picture alone.
 
 import PhotosUI
 import SwiftUI
@@ -8,62 +17,42 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = ProbeModel()
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// The open tool's raw value, or "" for none: kept across launches.
+    @AppStorage("RA4.tool") private var toolRaw = Tool.film.rawValue
+    @AppStorage("RA4.library") private var libraryShown = true
+    @State private var focus = false
     @State private var picking = false
     @State private var pickingPhotos = false
     @State private var photoItems: [PhotosPickerItem] = []
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var open: Set<String> = ["film", "camera", "adjustments", "export"]
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var settingsShown = false
+    @State private var librarySheetShown = false
 
-    private let scanTag = "__scan__"
-    private var catalog: StockCatalog { .shared }
+    private var tool: Tool? { Tool(rawValue: toolRaw) }
 
     var body: some View {
-        NavigationStack {
+        GeometryReader { geometry in
             Group {
-                if sizeClass == .compact {
-                    VStack(spacing: 0) {
-                        VStack(spacing: 0) { canvas; filmstrip }.frame(maxHeight: 460)
-                        Divider()
-                        panel
-                    }
+                if verticalSizeClass == .compact {
+                    // A phone on its side: too short to stack a panel under
+                    // the picture, so the panel goes beside it, as on an iPad.
+                    regularLayout(width: geometry.size.width, phone: true)
+                } else if sizeClass == .compact || geometry.size.width < 760 {
+                    // A phone upright, the iPhone Duo's inner screen, an iPad
+                    // in a narrow Split View: a panel beside the picture would
+                    // leave it a strip.
+                    compactLayout(height: geometry.size.height)
                 } else {
-                    HStack(spacing: 0) {
-                        VStack(spacing: 0) { canvas; filmstrip }
-                        Divider()
-                        panel.frame(width: 380)
-                    }
-                }
-            }
-            .navigationTitle(AppName.current)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    Menu {
-                        Button("From Files…", systemImage: "folder") { picking = true }
-                        Button("From Photos…", systemImage: "photo.on.rectangle") { pickingPhotos = true }
-                    } label: {
-                        Label("Import", systemImage: "square.and.arrow.down")
-                    }
-                    .disabled(model.busy != nil)
-                    Button("Previous", systemImage: "chevron.left") { Task { await model.previous() } }
-                        .keyboardShortcut(.leftArrow, modifiers: [])
-                        .disabled(!model.hasPrevious || model.busy != nil)
-                    Button("Next", systemImage: "chevron.right") { Task { await model.next() } }
-                        .keyboardShortcut(.rightArrow, modifiers: [])
-                        .disabled(!model.hasNext || model.busy != nil)
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Undo", systemImage: "arrow.uturn.backward") { model.undo() }
-                        .keyboardShortcut("z", modifiers: .command)
-                        .disabled(!model.canUndo || model.busy != nil)
-                    Button("Redo", systemImage: "arrow.uturn.forward") { model.redo() }
-                        .keyboardShortcut("z", modifiers: [.command, .shift])
-                        .disabled(!model.canRedo || model.busy != nil)
-                    Button("Copy results") { model.copyResults() }
+                    regularLayout(width: geometry.size.width, phone: false)
                 }
             }
         }
+        .background(Theme.rail.ignoresSafeArea())
+        .preferredColorScheme(.dark)
+        .tint(Theme.accent)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.rawImage, .image],
                       allowsMultipleSelection: true) { result in
             switch result {
@@ -80,416 +69,516 @@ struct ContentView: View {
                 photoItems = []
             }
         }
+        .sheet(isPresented: $settingsShown) { SettingsSheet(model: model) }
+        .sheet(isPresented: $librarySheetShown) {
+            LibraryGrid(model: model) { librarySheetShown = false }
+                .presentationDetents([.medium, .large])
+        }
         // Leaving the screen saves; coming back picks up photos added in Files.
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.refreshLibrary() } else { model.appLeavingScreen() }
         }
+        .task { await demoEnlargerIfAsked() }
+        // `--show-settings`, passed only from the Mac, so the sheet can be
+        // screenshotted without a tap.
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("--show-settings") { settingsShown = true } }
+    }
+
+    /// `--demo-enlarger <film id>`, passed only from the Mac: two seconds after
+    /// the photo opens, choose that film, so the enlarger transition can be
+    /// screen-recorded without anyone tapping.
+    private func demoEnlargerIfAsked() async {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "--demo-enlarger"), i + 1 < args.count else { return }
+        while !model.hasPhoto || model.busy != nil { try? await Task.sleep(for: .milliseconds(200)) }
+        try? await Task.sleep(for: .seconds(2))
+        model.selectFilm(args[i + 1])
+    }
+
+    // MARK: layouts
+
+    /// iPad: library · picture · panel · strip. Below 1000 pt (an iPad held
+    /// upright) the library steps aside while a panel is open, so the picture
+    /// keeps a useful width. A phone on its side (`phone`) has no room for the
+    /// library column, so its library is a sheet, and the panel is narrower.
+    private func regularLayout(width: CGFloat, phone: Bool) -> some View {
+        let narrow = width < 1000
+        let libraryVisible = !phone && libraryShown && !focus && (!narrow || tool == nil)
+        return VStack(spacing: 0) {
+            if !focus {
+                topBar(libraryInSheet: phone, narrow: narrow, tight: false)
+                Theme.hairline.frame(height: 1)
+            }
+            HStack(spacing: 0) {
+                if libraryVisible {
+                    LibraryColumn(model: model)
+                        .frame(width: Theme.libraryWidth)
+                        .transition(.move(edge: .leading))
+                    Theme.hairline.frame(width: 1)
+                }
+                canvasArea
+                if let tool, !focus {
+                    Theme.hairline.frame(width: 1)
+                    ToolPanel(tool: tool, model: model, open: open)
+                        .frame(width: phone ? Theme.phonePanelWidth : Theme.panelWidth)
+                        .transition(.move(edge: .trailing))
+                }
+                if !focus {
+                    Theme.hairline.frame(width: 1)
+                    toolStrip
+                        .frame(width: Theme.stripWidth)
+                }
+            }
+            // Down to the screen's edge: the home indicator floats over the
+            // canvas surround, not over a band of rail below it.
+            .ignoresSafeArea(.container, edges: .bottom)
+        }
+    }
+
+    /// iPhone: bar · picture · panel · tools.
+    private func compactLayout(height: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            if !focus {
+                topBar(libraryInSheet: true, narrow: true, tight: true)
+                Theme.hairline.frame(height: 1)
+            }
+            canvasArea
+            if let tool, !focus {
+                Theme.hairline.frame(height: 1)
+                ToolPanel(tool: tool, model: model, open: open)
+                    .frame(height: min(380, height * 0.46))
+                    .transition(.move(edge: .bottom))
+            }
+            if !focus {
+                Theme.hairline.frame(height: 1)
+                HStack(spacing: 0) {
+                    ForEach(Tool.allCases) { t in
+                        StripButton(tool: t, selected: tool == t, fills: true) { toggle(t) }
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
+                .background(Theme.rail)
+            }
+        }
+    }
+
+    private func toggle(_ t: Tool) {
+        withAnimation(.snappy(duration: 0.25)) { toolRaw = tool == t ? "" : t.rawValue }
+    }
+
+    private func open(_ t: Tool) {
+        withAnimation(.snappy(duration: 0.25)) { toolRaw = t.rawValue }
+    }
+
+    // MARK: the bar
+
+    /// The bar: library and import on the left, the photo in the middle,
+    /// before/after, undo, redo and Settings on the right. `tight` (a phone
+    /// upright) gives the name whatever room the buttons leave and drops the
+    /// ‹ › arrows, which a swipe on the picture replaces; centred, a long name
+    /// ran under the buttons.
+    private func topBar(libraryInSheet: Bool, narrow: Bool, tight: Bool) -> some View {
+        Group {
+            if tight {
+                HStack(spacing: 2) {
+                    barLeading(libraryInSheet: libraryInSheet, narrow: narrow)
+                    // The whole name when it fits; shortened while there is
+                    // room for a useful part of it; else nothing — "L…G" says
+                    // less than the library does.
+                    ViewThatFits(in: .horizontal) {
+                        photoTitle(subtitle: false).fixedSize()
+                        photoTitle(subtitle: false).frame(minWidth: 90)
+                        Color.clear.frame(width: 1, height: 1)
+                    }
+                    .padding(.horizontal, 4)
+                    .frame(maxWidth: .infinity)
+                    .background { arrowKeys }
+                    barTrailing
+                }
+            } else {
+                ZStack {
+                    HStack(spacing: 2) {
+                        barLeading(libraryInSheet: libraryInSheet, narrow: narrow)
+                        Spacer()
+                        barTrailing
+                    }
+                    titleBlock
+                        .frame(maxWidth: 460)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: Theme.barHeight)
+        .background(Theme.rail)
+    }
+
+    private func barLeading(libraryInSheet: Bool, narrow: Bool) -> some View {
+        HStack(spacing: 2) {
+            BarButton("Library", symbol: "sidebar.left", active: !libraryInSheet && libraryShown) {
+                if libraryInSheet {
+                    librarySheetShown = true
+                } else {
+                    withAnimation(.snappy(duration: 0.25)) {
+                        libraryShown.toggle()
+                        // Upright, the library and a panel do not both fit.
+                        if libraryShown && narrow { toolRaw = "" }
+                    }
+                }
+            }
+            Menu {
+                Button("From Files…", systemImage: "folder") { picking = true }
+                Button("From Photos…", systemImage: "photo.on.rectangle") { pickingPhotos = true }
+            } label: {
+                BarIcon(symbol: "plus")
+            }
+            .accessibilityLabel(Text("Import"))
+            .disabled(model.busy != nil)
+        }
+    }
+
+    private var barTrailing: some View {
+        HStack(spacing: 2) {
+            if model.rendering || model.busy != nil {
+                ProgressView().controlSize(.small).padding(.horizontal, 6)
+            }
+            BarButton("Photo information", symbol: model.showingInfo ? "info.circle.fill" : "info.circle",
+                      active: model.showingInfo) {
+                model.showingInfo.toggle()
+            }
+            .keyboardShortcut("i", modifiers: [])
+            .disabled(!model.hasPhoto)
+            BarButton("Before and after", symbol: "square.split.2x1",
+                      active: model.compare != .off) {
+                model.compare = model.compare == .off ? .split : .off
+            }
+            .disabled(model.cropping || !model.hasPhoto)
+            BarButton("Undo", symbol: "arrow.uturn.backward") { model.undo() }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(!model.canUndo || model.busy != nil)
+            BarButton("Redo", symbol: "arrow.uturn.forward") { model.redo() }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!model.canRedo || model.busy != nil)
+            BarButton("Settings", symbol: "gearshape") { settingsShown = true }
+        }
+    }
+
+    /// ← → without the arrows on screen (the tight bar), for a keyboard.
+    private var arrowKeys: some View {
+        ZStack {
+            Button("Previous") { Task { await model.previous() } }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .disabled(!model.hasPrevious || model.busy != nil)
+            Button("Next") { Task { await model.next() } }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(!model.hasNext || model.busy != nil)
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
+
+    /// ‹ the photo's name, and what it is on › — the arrows step through the
+    /// library (also ← → on a keyboard, or a swipe on the picture).
+    private var titleBlock: some View {
+        HStack(spacing: 4) {
+            BarButton("Previous", symbol: "chevron.left") { Task { await model.previous() } }
+                .keyboardShortcut(.leftArrow, modifiers: [])
+                .disabled(!model.hasPrevious || model.busy != nil)
+            photoTitle(subtitle: true)
+                .frame(maxWidth: .infinity)
+            BarButton("Next", symbol: "chevron.right") { Task { await model.next() } }
+                .keyboardShortcut(.rightArrow, modifiers: [])
+                .disabled(!model.hasNext || model.busy != nil)
+        }
+    }
+
+    private func photoTitle(subtitle: Bool) -> some View {
+        VStack(spacing: 1) {
+            Text(verbatim: model.current?.name ?? AppName.current)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.text)
+            if model.hasPhoto && subtitle {
+                Text(verbatim: processLine)
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
+            }
+        }
+        .lineLimit(1)
+        .truncationMode(.middle)
+    }
+
+    /// "Portra 400 → Supra Endura": the film, and the paper it is printed on.
+    private var processLine: String {
+        let s = model.settings, catalog = StockCatalog.shared
+        let film = Stocks.shortName(catalog.name(s.filmStock))
+        if s.filmIsPositive { return film + " · " + String(localized: "slide, scanned") }
+        if s.scanFilm { return film + " · " + String(localized: "negative, scanned") }
+        return film + " → " + Stocks.shortName(catalog.name(s.printStock))
+    }
+
+    // MARK: the strip
+
+    private var toolStrip: some View {
+        ScrollView(.vertical, showsIndicators: false) { toolStripButtons }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: .infinity)
+            .background(Theme.rail)
+    }
+
+    /// Scrolls only where it must: a phone on its side is shorter than seven tools.
+    private var toolStripButtons: some View {
+        VStack(spacing: 2) {
+            ForEach(Array(Tool.allCases.enumerated()), id: \.element) { index, t in
+                if index > 0 && t.beginsStage {
+                    Theme.hairline.frame(width: 36, height: 1).padding(.vertical, 6)
+                }
+                StripButton(tool: t, selected: tool == t) { toggle(t) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            }
+        }
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: the picture
 
-    @ViewBuilder private var canvas: some View {
+    private var canvasArea: some View {
         ZStack {
-            Color(white: 0.16)
+            Theme.ground
             if let renderer = model.renderer {
-                CanvasView(renderer: renderer, print: model.print,
-                           uniforms: model.adjustments.uniforms, transform: model.displayTransform)
+                CanvasView(model: model, renderer: renderer,
+                           onTap: {
+                               guard model.hasPhoto else { return }
+                               withAnimation(.snappy(duration: 0.25)) { focus.toggle() }
+                           },
+                           onSwipe: { forward in
+                               guard model.busy == nil else { return }
+                               Task { if forward { await model.next() } else { await model.previous() } }
+                           })
             }
             if !model.hasPhoto && model.busy == nil {
-                Text("Import a photo: Import › From Files or From Photos.\nPhotos added to Files › On My iPad › \(AppName.current) appear here too.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .padding()
+                EmptyLibraryView(fromFiles: { picking = true }, fromPhotos: { pickingPhotos = true })
+            }
+            // The file's EXIF over the picture (PhotoInfo.swift); it stays up
+            // through next and previous, so a roll can be read through.
+            if model.showingInfo && model.hasPhoto {
+                PhotoInfoOverlay(model: model)
+                    .transition(.opacity)
+            }
+            VStack(spacing: 10) {
+                if let note = model.crashNote {
+                    Banner(text: note, dismiss: model.dismissCrashNote)
+                }
+                if let error = model.error {
+                    Banner(text: error, dismiss: { model.error = nil })
+                }
+                Spacer()
+                if let busy = model.busy {
+                    BusyCapsule(text: busy)
+                } else if model.pickingNeutral {
+                    HintCapsule(text: Text("Tap something white or grey"), symbol: "eyedropper")
+                }
+            }
+            .padding(14)
+            .allowsHitTesting(model.crashNote != nil || model.error != nil)
+            if let zoom = model.canvasZoomPercent {
+                Text(verbatim: "\(zoom) %")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Theme.text)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Theme.rail.opacity(0.85), in: Capsule())
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .allowsHitTesting(false)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: the filmstrip
-
-    /// The library, in name order: each photo as it was last left (the print,
-    /// once opened), a dot on the edited ones, the open one outlined.
-    private var filmstrip: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 8) {
-                    ForEach(model.photos) { photo in
-                        Button { Task { await model.open(photo) } } label: { cell(photo) }
-                            .buttonStyle(.plain)
-                            .disabled(model.busy != nil)
-                            .id(photo.name)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-            }
-            .frame(height: 92)
-            .background(Color(white: 0.1))
-            .onChange(of: model.current) { _, photo in
-                if let photo { withAnimation { proxy.scrollTo(photo.name, anchor: .center) } }
-            }
-        }
-    }
-
-    private func cell(_ photo: LibraryPhoto) -> some View {
-        let isOpen = model.current == photo
-        return ZStack(alignment: .topTrailing) {
-            Group {
-                if let image = model.thumbnails[photo.name] {
-                    Image(uiImage: image).resizable().scaledToFill()
-                } else {
-                    Color(white: 0.2)
-                }
-            }
-            .frame(width: 112, height: 74)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            if model.edited.contains(photo.name) {
-                Circle().fill(.orange).frame(width: 8, height: 8).padding(5)
-            }
-        }
-        .overlay(RoundedRectangle(cornerRadius: 5).stroke(isOpen ? Color.accentColor : .clear, lineWidth: 3))
-        .accessibilityLabel(photo.name + (model.edited.contains(photo.name) ? ", edited" : ""))
-    }
-
-    // MARK: the panel
-
-    private var panel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if let note = model.crashNote { crashBanner(note) }
-                if let busy = model.busy {
-                    HStack(spacing: 8) { ProgressView(); Text(busy).font(.callout) }
-                } else if model.rendering {
-                    HStack(spacing: 8) { ProgressView(); Text("Rendering…").font(.callout) }
-                }
-                if let error = model.error {
-                    Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-                }
-                group("film", "Film and paper") { filmAndPaper }
-                group("camera", "Camera") { camera }
-                group("effects", "Film effects") { effects }
-                group("format", "Film format") { format }
-                group("placement", "Scene placement") { placement }
-                group("print", "Print") { print }
-                group("adjustments", "Adjustments") { adjustmentsSection }
-                group("export", "Export") { exportSection }
-                group("diagnostics", "Diagnostics") { diagnostics }
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(Color(.secondarySystemBackground))
-    }
-
-    private func group<Content: View>(_ key: String, _ title: String,
-                                      @ViewBuilder content: () -> Content) -> some View {
-        let built = content()
-        return DisclosureGroup(isExpanded: Binding(get: { open.contains(key) },
-                                                   set: { if $0 { open.insert(key) } else { open.remove(key) } })) {
-            VStack(alignment: .leading, spacing: 10) { built }
-                .padding(.top, 8)
-        } label: {
-            Text(title).font(.headline)
-        }
-    }
-
-    // MARK: Layer 1 — the engine's settings
-
-    private var filmAndPaper: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            LabeledContent("Film") {
-                Picker("Film", selection: Binding(get: { model.settings.filmStock },
-                                                  set: { model.selectFilm($0) })) {
-                    ForEach(catalog.filmGroups, id: \.title) { group in
-                        Section(group.title) {
-                            ForEach(group.stocks) { Text($0.name).tag($0.id) }
-                        }
-                    }
-                }
-            }
-            LabeledContent("Paper") {
-                Picker("Paper", selection: Binding(
-                    get: { model.settings.scanFilm ? scanTag : model.settings.printStock },
-                    set: { $0 == scanTag ? model.selectNoPrint() : model.selectPaper($0) })) {
-                    Text("No print (scan the film)").tag(scanTag)
-                    ForEach(catalog.paperGroups(for: model.settings.filmStock), id: \.title) { group in
-                        Section(group.title) {
-                            ForEach(group.stocks) { Text($0.name).tag($0.id) }
-                        }
-                    }
-                }
-                .disabled(model.settings.filmIsPositive)
-            }
-            if model.settings.filmIsPositive {
-                caption("A slide film has no print stage: it is scanned as it is.")
-            } else if model.settings.scanFilm {
-                caption("Scanning the negative itself, orange mask and all. Pick a paper to print it.")
-            }
-        }
-        .pickerStyle(.menu)
-        .disabled(model.busy != nil)
-    }
-
-    private var camera: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            LabeledContent("Metering") {
-                Picker("Metering", selection: $model.settings.metering) {
-                    ForEach(Metering.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.menu)
-            }
-            AdjustmentSlider(title: "Film exposure", value: $model.settings.exposureCompensationEV,
-                             range: -4...4, step: 1.0 / 3, format: { String(format: "%+.1f EV", $0) })
-            Button("As shot") { model.filmExposureAsShot() }
-                .buttonStyle(.bordered)
-                .disabled(model.settings.metering == .custom && model.settings.exposureCompensationEV == 0)
-            caption(model.settings.metering == .custom
-                    ? "Custom: the meter is off, so Film Exposure starts from the camera's own exposure."
-                    : "The meter sets the film's exposure; Film Exposure is an offset from it.")
-        }
-        .disabled(model.busy != nil)
-    }
-
-    private var effects: some View {
-        let s = model.settings
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Spacer()
-                Button("Reset") { model.resetEffects() }
-                    .disabled(s.effects == EffectStrengths())
-            }
-            Toggle("Grain", isOn: $model.settings.grainActive)
-            AdjustmentSlider(title: "Grain strength", value: $model.settings.effects.grain,
-                             range: EffectStrengths.grainRange, step: 0.05, resetValue: 1, format: Self.times)
-                .disabled(!s.grainActive)
-            if !s.filmIsMonochrome {
-                Toggle("Grain in three sub-layers", isOn: $model.settings.effects.grainLayered)
-                    .disabled(!s.grainActive)
-            }
-            Divider()
-            Toggle("Halation", isOn: $model.settings.halationActive)
-            AdjustmentSlider(title: "Halation strength", value: $model.settings.effects.halation,
-                             range: EffectStrengths.halationRange, step: 0.05, resetValue: 1, format: Self.times)
-                .disabled(!s.halationActive)
-            AdjustmentSlider(title: "Scatter", value: $model.settings.effects.scatter,
-                             range: EffectStrengths.scatterRange, step: 0.05, resetValue: 1, format: Self.times)
-                .disabled(!s.halationActive)
-            AdjustmentSlider(title: "Highlight boost", value: $model.settings.effects.highlightBoost,
-                             range: EffectStrengths.highlightBoostRange, step: 0.5,
-                             format: { String(format: "%.1f EV", $0) })
-                .disabled(!s.halationActive)
-            if s.filmHasNoAntihalationLayer {
-                caption("This film has no anti-halation layer.")
-            } else {
-                Toggle("Remove the anti-halation layer", isOn: $model.settings.effects.antihalationRemoved)
-            }
-            if s.filmHasNoAntihalationLayer || s.effects.antihalationRemoved {
-                AdjustmentSlider(title: "Highlight headroom", value: $model.settings.effects.highlightHeadroom,
-                                 range: EffectStrengths.highlightHeadroomRange, step: 0.5, resetValue: 4,
-                                 format: { String(format: "%.1f EV", $0) })
-            }
-            Divider()
-            Toggle("Colour couplers", isOn: $model.settings.effects.couplersActive)
-            AdjustmentSlider(title: "Coupler strength", value: $model.settings.effects.couplers,
-                             range: EffectStrengths.couplersRange, step: 0.05, resetValue: 1, format: Self.times)
-                .disabled(!s.effects.couplersActive)
-            Divider()
-            Toggle("Glare", isOn: $model.settings.glareActive)
-                .disabled(s.scanFilm || !s.printEffects)
-            AdjustmentSlider(title: "Glare strength", value: $model.settings.effects.glare,
-                             range: EffectStrengths.glareRange, step: 0.5, resetValue: 1, format: Self.times)
-                .disabled(!s.glareActive || s.scanFilm || !s.printEffects)
-        }
-        .disabled(model.busy != nil)
-    }
-
-    private var format: some View {
-        let s = model.settings
-        return VStack(alignment: .leading, spacing: 8) {
-            LabeledContent("Film type") {
-                Picker("Film type", selection: Binding(get: { s.filmFrame }, set: { model.setFrame($0) })) {
-                    Section("Still") { ForEach(FilmFrame.still) { Text($0.id).tag($0.id) } }
-                    Section("Cine") { ForEach(FilmFrame.cine) { Text($0.id).tag($0.id) } }
-                }
-                .pickerStyle(.menu)
-            }
-            Picker("Side", selection: Binding(get: { s.filmSide }, set: { model.setSide($0) })) {
-                ForEach(FilmSide.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            AdjustmentSlider(title: "Side length", value: Binding(get: { s.sideLengthMM },
-                                                                    set: { model.setSideLength($0) }),
-                             range: 4...120, step: 0.5, resetValue: 24, format: { String(format: "%.1f mm", $0) })
-            caption(String(format: "Long edge sent to the engine: %.1f mm. Grain and halation are sized in real micrometres, so a smaller format shows coarser grain. Moving Side length makes the type Custom.",
-                           s.filmFormatMM))
-        }
-        .disabled(model.busy != nil)
-    }
-
-    private var placement: some View {
-        let committed = model.settings.placement
-        return VStack(alignment: .leading, spacing: 8) {
-            ForEach(model.latitudeLines, id: \.self) { line in
-                Text(line).font(.system(.caption, design: .monospaced))
-            }
-            AdjustmentSlider(title: "Highlights pull-back", value: $model.highlightDraft,
-                             range: ScenePlacement.range, step: 0.25,
-                             format: { $0 == 0 ? "off" : String(format: "%.2f stops", $0) },
-                             onRelease: { Task { await model.place(highlight: model.highlightDraft,
-                                                                   shadow: committed.shadowPullBack) } })
-            AdjustmentSlider(title: "Shadows pull-back", value: $model.shadowDraft,
-                             range: ScenePlacement.range, step: 0.25,
-                             format: { $0 == 0 ? "off" : String(format: "%.2f stops", $0) },
-                             onRelease: { Task { await model.place(highlight: committed.highlightPullBack,
-                                                                   shadow: model.shadowDraft) } })
-            HStack {
-                Button("Suggest") { Task { await model.suggestPlacement() } }
-                    .buttonStyle(.bordered)
-                Button("Off") { model.resetPlacement() }
-                    .buttonStyle(.bordered)
-                    .disabled(!committed.active && committed.highlightPullBack == 0 && committed.shadowPullBack == 0)
-            }
-            if let note = model.placementNote {
-                Text(note).font(.callout).foregroundStyle(.orange)
-            }
-            caption("Fits a scene wider than the film onto it: the highlights are pulled back, the shadows lifted, before the film sees them. The engine solves each change and refuses one it cannot place.")
-        }
-        .disabled(model.busy != nil || !model.hasPhoto)
-    }
-
-    private var print: some View {
-        let s = model.settings
-        return VStack(alignment: .leading, spacing: 8) {
-            Toggle("Print effects", isOn: $model.settings.printEffects)
-                .disabled(s.scanFilm)
-            caption("Glare and pre-flash. Off leaves the paper's colour transformation and nothing else.")
-            Toggle("EDR (extended range)", isOn: $model.settings.extendedDynamicRange)
-                .disabled(s.scanFilm || s.printIsMonochrome)
-            caption(s.printIsMonochrome
-                    ? "The silver paper has no EDR calibration."
-                    : "A calibrated per-paper profile with more room in the highlight shoulder and the toe. What you see is what the export carries.")
-        }
-        .disabled(model.busy != nil)
-    }
-
-    // MARK: Layer 2, export, diagnostics
-
-    private var adjustmentsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Spacer()
-                Button("Reset") { model.resetAdjustments() }
-                    .disabled(model.adjustments.isNeutral)
-            }
-            Text("White balance").font(.subheadline).foregroundStyle(.secondary)
-            AdjustmentSlider(title: "Temperature", value: $model.adjustments.temperature, range: -100...100)
-            AdjustmentSlider(title: "Tint", value: $model.adjustments.tint, range: -100...100)
-            Text("Tone").font(.subheadline).foregroundStyle(.secondary)
-            AdjustmentSlider(title: "Exposure", value: $model.adjustments.exposure, range: -3...3, step: 0.01,
-                             format: { String(format: "%+.2f EV", $0) })
-            AdjustmentSlider(title: "Contrast", value: $model.adjustments.contrast, range: -50...50)
-            AdjustmentSlider(title: "Highlights", value: $model.adjustments.highlights, range: -100...100)
-            AdjustmentSlider(title: "Shadows", value: $model.adjustments.shadows, range: -100...100)
-            AdjustmentSlider(title: "Black point", value: $model.adjustments.blackPoint, range: 0...50,
-                             format: { String(format: "%.0f", $0) })
-            AdjustmentSlider(title: "White point", value: $model.adjustments.whitePoint, range: 0...50,
-                             format: { String(format: "%.0f", $0) })
-            Text("Colour").font(.subheadline).foregroundStyle(.secondary)
-            AdjustmentSlider(title: "Saturation", value: $model.adjustments.saturation, range: -100...100)
-            AdjustmentSlider(title: "Vibrance", value: $model.adjustments.vibrance, range: -100...100)
-            caption("Double-tap a name to reset it.")
-        }
-        .disabled(!model.hasPhoto)
-    }
-
-    private var exportSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            AdjustmentSlider(title: "JPEG quality", value: $model.exportQuality, range: 10...100, resetValue: 95,
-                             format: { String(format: "%.0f", $0) })
-            HStack {
-                Button("Export JPEG (sRGB)") { Task { await model.exportJPEG() } }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!model.hasPhoto || model.busy != nil)
-                if let url = model.lastExport {
-                    ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
-                }
-            }
-            ForEach(model.exportLines, id: \.self) { line in
-                Text(line).font(.system(.caption, design: .monospaced))
-            }
-        }
-        .textSelection(.enabled)
-    }
-
-    private var diagnostics: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button("Render full resolution") { Task { await model.renderFull() } }
-                .buttonStyle(.bordered)
-                .disabled(!model.hasPhoto || model.busy != nil)
-            section("Full-resolution render", model.fullLines)
-            section("Preview", model.previewLines)
-            section("Photo", model.photoLines)
-            section("Device", model.deviceLines)
-        }
-    }
-
-    @ViewBuilder private func section(_ title: String, _ lines: [String]) -> some View {
-        if !lines.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.subheadline.bold())
-                ForEach(lines, id: \.self) { line in
-                    Text(line).font(.system(.caption, design: .monospaced))
-                }
-            }
-            .textSelection(.enabled)
-        }
-    }
-
-    private func caption(_ text: String) -> some View {
-        Text(text).font(.caption).foregroundStyle(.secondary)
-    }
-
-    private static let times: (Double) -> String = { String(format: "×%.2f", $0) }
-
-    private func crashBanner(_ note: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(note).font(.callout).textSelection(.enabled)
-            Button("Dismiss") { model.dismissCrashNote() }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.red.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+        .clipped()
+        .animation(.easeOut(duration: 0.15), value: model.showingInfo)
+        .accessibilityAction(named: Text("Show the photo alone")) { focus.toggle() }
     }
 }
 
-/// A labelled slider with its value; double-tapping the label resets it.
-/// `onRelease` runs when a drag ends, for a control the engine solves on
-/// release (Scene Placement) rather than on every step.
-struct AdjustmentSlider: View {
-    let title: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    var step: Double = 1
-    var resetValue: Double = 0
-    var format: (Double) -> String = { String(format: "%+.0f", $0) }
-    var onRelease: (() -> Void)?
+// MARK: - The bar's buttons
+
+/// An icon in the top bar, 44 pt square for a finger.
+struct BarIcon: View {
+    let symbol: String
+    var active = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text(format(value)).monospacedDigit().foregroundStyle(.secondary)
-            }
-            .font(.callout)
+        Image(systemName: symbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(active ? Theme.accent : Theme.text)
+            .frame(width: 44, height: 44)
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
-                value = resetValue
-                onRelease?()
-            }
-            Slider(value: $value, in: range, step: step) { editing in
-                if !editing { onRelease?() }
-            }
+    }
+}
+
+struct BarButton: View {
+    let title: LocalizedStringKey
+    let symbol: String
+    var active = false
+    let action: () -> Void
+
+    init(_ title: LocalizedStringKey, symbol: String, active: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.symbol = symbol
+        self.active = active
+        self.action = action
+    }
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            BarIcon(symbol: symbol, active: active).opacity(isEnabled ? 1 : 0.3)
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(title))
+        .hoverEffect(.highlight)
+    }
+}
+
+/// One tool in the strip (or in the iPhone's bottom bar): its icon and name.
+struct StripButton: View {
+    let tool: Tool
+    let selected: Bool
+    /// Share a row's width (the iPhone's bottom bar) rather than 62 pt each.
+    var fills = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: tool.symbol)
+                    .font(.system(size: 19, weight: selected ? .semibold : .regular))
+                    .frame(height: 22)
+                Text(tool.label)
+                    .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(selected ? Theme.accent : Theme.secondaryText)
+            .frame(width: fills ? nil : 62, height: 56)
+            .frame(maxWidth: fills ? .infinity : nil)
+            .background(selected ? Theme.well : .clear, in: RoundedRectangle(cornerRadius: Theme.corner))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+// MARK: - Over the picture
+
+/// An error or a note, across the top of the picture, until dismissed.
+struct Banner: View {
+    let text: String
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.danger)
+            Text(verbatim: text)
+                .font(.callout)
+                .foregroundStyle(Theme.text)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark").font(.callout.weight(.semibold))
+                    .foregroundStyle(Theme.secondaryText)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Dismiss"))
+        }
+        .padding(12)
+        .frame(maxWidth: 560)
+        .background(Theme.rail.opacity(0.94), in: RoundedRectangle(cornerRadius: Theme.corner))
+        .overlay(RoundedRectangle(cornerRadius: Theme.corner).stroke(Theme.danger.opacity(0.5), lineWidth: 1))
+    }
+}
+
+/// What the app is doing that the controls wait for: opening, exporting.
+struct BusyCapsule: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small).tint(Theme.accent)
+            Text(verbatim: text).font(.callout).foregroundStyle(Theme.text)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Theme.rail.opacity(0.92), in: Capsule())
+        .overlay(Capsule().stroke(Theme.hairline, lineWidth: 1))
+    }
+}
+
+/// A hint about what a tap on the picture will do now (the eyedropper).
+struct HintCapsule: View {
+    let text: Text
+    let symbol: String
+
+    var body: some View {
+        Label { text } icon: { Image(systemName: symbol) }
+            .font(.callout)
+            .foregroundStyle(Theme.text)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Theme.rail.opacity(0.92), in: Capsule())
+            .overlay(Capsule().stroke(Theme.accent.opacity(0.6), lineWidth: 1))
+    }
+}
+
+/// The first thing a new library shows: the name, and the two ways in.
+struct EmptyLibraryView: View {
+    let fromFiles: () -> Void
+    let fromPhotos: () -> Void
+
+    var body: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 10) {
+                Image("RA4Logo")
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 148, height: 148)
+                    .clipShape(RoundedRectangle(cornerRadius: 33, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 33, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 1))
+                    .accessibilityHidden(true)
+                Text(verbatim: "RA-4")
+                    .font(.system(size: 44, weight: .heavy))
+                    .kerning(1.5)
+                    .foregroundStyle(Theme.text)
+                    .padding(.top, 6)
+                Text("Spectral darkroom")
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            VStack(spacing: 10) {
+                Button(action: fromPhotos) {
+                    Label("Import from Photos", systemImage: "photo.on.rectangle")
+                }
+                .buttonStyle(WideButtonStyle(prominent: true))
+                Button(action: fromFiles) {
+                    Label("Import from Files", systemImage: "folder")
+                }
+                .buttonStyle(WideButtonStyle())
+            }
+            .frame(width: 280)
+            Text("Photos you put in Files › On My iPad › \(AppName.current) appear here too.")
+                .font(.footnote)
+                .foregroundStyle(Theme.tertiaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 320)
+        }
+        .padding(24)
     }
 }

@@ -7,7 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CC00000000000000000000A7 /* PhotoInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A7 /* PhotoInfo.swift */; };
+		CC00000000000000000000A6 /* BlackAndWhite.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A6 /* BlackAndWhite.swift */; };
 		CC00000000000000000000A5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A5 /* Assets.xcassets */; };
+		CC00000000000000000000A1 /* Geometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A1 /* Geometry.swift */; };
+		CC00000000000000000000A2 /* CameraDecode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A2 /* CameraDecode.swift */; };
+		CC00000000000000000000A3 /* CropPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A3 /* CropPanel.swift */; };
+		CC00000000000000000000A4 /* CameraPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A4 /* CameraPanel.swift */; };
 		CC0000000000000000000001 /* SpektraProbeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000001 /* SpektraProbeApp.swift */; };
 		CC0000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000002 /* ContentView.swift */; };
 		CC0000000000000000000003 /* ProbeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000003 /* ProbeModel.swift */; };
@@ -15,21 +21,32 @@
 		CC0000000000000000000005 /* RAWDecode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000005 /* RAWDecode.swift */; };
 		CC0000000000000000000006 /* Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000006 /* Memory.swift */; };
 		CC0000000000000000000007 /* Stocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000007 /* Stocks.swift */; };
-		CC000000000000000000000A /* engine in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000A /* engine */; };
 		CC000000000000000000000B /* Adjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000B /* Adjustments.swift */; };
 		CC000000000000000000000C /* ColourTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000C /* ColourTransform.swift */; };
 		CC000000000000000000000D /* Renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000D /* Renderer.swift */; };
 		CC000000000000000000000E /* CanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000E /* CanvasView.swift */; };
-		CC000000000000000000000F /* JPEGExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000F /* JPEGExport.swift */; };
+		CC000000000000000000000F /* ImageExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000F /* ImageExport.swift */; };
 		CC0000000000000000000010 /* Canvas.metal in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* Canvas.metal */; };
 		CC0000000000000000000012 /* FilmSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000012 /* FilmSettings.swift */; };
 		CC0000000000000000000013 /* StockCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* StockCatalog.json */; };
 		CC0000000000000000000014 /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000014 /* Library.swift */; };
 		CC0000000000000000000015 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000015 /* InfoPlist.strings */; };
+		CC0000000000000000000016 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000018 /* Theme.swift */; };
+		CC0000000000000000000017 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000019 /* LibraryView.swift */; };
+		CC0000000000000000000018 /* ToolPanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000001A /* ToolPanels.swift */; };
+		CC0000000000000000000019 /* SettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000001B /* SettingsSheet.swift */; };
+		CC000000000000000000001A /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000001C /* Localizable.strings */; };
+		CC000000000000000000001B /* EnlargerTransition.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000001F /* EnlargerTransition.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		BB00000000000000000000A7 /* PhotoInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInfo.swift; sourceTree = "<group>"; };
+		BB00000000000000000000A6 /* BlackAndWhite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlackAndWhite.swift; sourceTree = "<group>"; };
 		BB00000000000000000000A5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BB00000000000000000000A1 /* Geometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geometry.swift; sourceTree = "<group>"; };
+		BB00000000000000000000A2 /* CameraDecode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraDecode.swift; sourceTree = "<group>"; };
+		BB00000000000000000000A3 /* CropPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CropPanel.swift; sourceTree = "<group>"; };
+		BB00000000000000000000A4 /* CameraPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPanel.swift; sourceTree = "<group>"; };
 		AA0000000000000000000005 /* SpektraProbe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpektraProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB0000000000000000000001 /* SpektraProbeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpektraProbeApp.swift; sourceTree = "<group>"; };
 		BB0000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -45,13 +62,20 @@
 		BB000000000000000000000C /* ColourTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColourTransform.swift; sourceTree = "<group>"; };
 		BB000000000000000000000D /* Renderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Renderer.swift; sourceTree = "<group>"; };
 		BB000000000000000000000E /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
-		BB000000000000000000000F /* JPEGExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JPEGExport.swift; sourceTree = "<group>"; };
+		BB000000000000000000000F /* ImageExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageExport.swift; sourceTree = "<group>"; };
 		BB0000000000000000000010 /* Canvas.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Canvas.metal; sourceTree = "<group>"; };
 		BB0000000000000000000012 /* FilmSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmSettings.swift; sourceTree = "<group>"; };
 		BB0000000000000000000013 /* StockCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = StockCatalog.json; path = ../modern_UI/Spektrafilm/Spektrafilm/Resources/StockCatalog.json; sourceTree = SOURCE_ROOT; };
 		BB0000000000000000000014 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
 		BB0000000000000000000016 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		BB0000000000000000000017 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		BB0000000000000000000018 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		BB0000000000000000000019 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		BB000000000000000000001A /* ToolPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolPanels.swift; sourceTree = "<group>"; };
+		BB000000000000000000001B /* SettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSheet.swift; sourceTree = "<group>"; };
+		BB000000000000000000001D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		BB000000000000000000001E /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		BB000000000000000000001F /* EnlargerTransition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnlargerTransition.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +112,17 @@
 			children = (
 				BB0000000000000000000001 /* SpektraProbeApp.swift */,
 				BB0000000000000000000002 /* ContentView.swift */,
+				BB000000000000000000001F /* EnlargerTransition.swift */,
+				BB000000000000000000001B /* SettingsSheet.swift */,
+				BB000000000000000000001A /* ToolPanels.swift */,
+				BB00000000000000000000A1 /* Geometry.swift */,
+				BB00000000000000000000A2 /* CameraDecode.swift */,
+				BB00000000000000000000A3 /* CropPanel.swift */,
+				BB00000000000000000000A4 /* CameraPanel.swift */,
+				BB00000000000000000000A6 /* BlackAndWhite.swift */,
+				BB00000000000000000000A7 /* PhotoInfo.swift */,
+				BB0000000000000000000019 /* LibraryView.swift */,
+				BB0000000000000000000018 /* Theme.swift */,
 				BB0000000000000000000003 /* ProbeModel.swift */,
 				BB0000000000000000000004 /* Engine.swift */,
 				BB0000000000000000000005 /* RAWDecode.swift */,
@@ -97,11 +132,12 @@
 				BB0000000000000000000014 /* Library.swift */,
 				BB0000000000000000000015 /* InfoPlist.strings */,
 				BB00000000000000000000A5 /* Assets.xcassets */,
+				BB000000000000000000001C /* Localizable.strings */,
 				BB000000000000000000000B /* Adjustments.swift */,
 				BB000000000000000000000C /* ColourTransform.swift */,
 				BB000000000000000000000D /* Renderer.swift */,
 				BB000000000000000000000E /* CanvasView.swift */,
-				BB000000000000000000000F /* JPEGExport.swift */,
+				BB000000000000000000000F /* ImageExport.swift */,
 				BB0000000000000000000010 /* Canvas.metal */,
 				BB0000000000000000000008 /* SpektraProbe-Bridging-Header.h */,
 				BB0000000000000000000009 /* SpektraProbe.entitlements */,
@@ -119,6 +155,7 @@
 				AA0000000000000000000007 /* Sources */,
 				AA0000000000000000000008 /* Frameworks */,
 				AA0000000000000000000009 /* Resources */,
+				AA0000000000000000000011 /* Copy the engine's resources and kernels */,
 			);
 			buildRules = (
 			);
@@ -163,14 +200,39 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CC000000000000000000000A /* engine in Resources */,
 				CC0000000000000000000013 /* StockCatalog.json in Resources */,
 				CC0000000000000000000015 /* InfoPlist.strings in Resources */,
 				CC00000000000000000000A5 /* Assets.xcassets in Resources */,
+				CC000000000000000000001A /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		AA0000000000000000000011 /* Copy the engine's resources and kernels */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Resources/engine",
+				"$(SRCROOT)/../engine/build/$(SPK_ENGINE_DIR)/spektrafilm.metallib",
+			);
+			name = "Copy the engine's resources and kernels";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/engine/spektrafilm.metallib",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The engine's resources and its kernels, in ONE step, so nothing else ever\n# writes SpektraProbe.app/engine. They used to be two -- a folder-reference copy\n# of Resources/engine in the Resources phase, and this phase adding the metallib\n# -- and Xcode may run those side by side: when the folder copy landed last it\n# replaced the folder and the metallib was gone (\"the engine is not running\").\n# The kernels differ per platform (engine/build-ios.sh: device build/ios,\n# Simulator build/ios-sim), so they are never in Resources/engine.\nsrc=\"${SRCROOT}/Resources/engine\"\nlib=\"${SRCROOT}/../engine/build/${SPK_ENGINE_DIR}/spektrafilm.metallib\"\ndst=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/engine\"\nif [ ! -f \"$src/spektrafilm_constants.bin\" ]; then\n  echo \"error: $src is missing. Run engine/build-ios.sh bundle.\"\n  exit 1\nfi\nif [ ! -f \"$lib\" ]; then\n  echo \"error: $lib is missing. Run engine/build-ios.sh (device) or engine/build-ios.sh sim (Simulator).\"\n  exit 1\nfi\nmkdir -p \"$dst\"\nrsync -a --delete --exclude spektrafilm.metallib \"$src/\" \"$dst/\"\ncp \"$lib\" \"$dst/spektrafilm.metallib\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		AA0000000000000000000007 /* Sources */ = {
@@ -179,6 +241,17 @@
 			files = (
 				CC0000000000000000000001 /* SpektraProbeApp.swift in Sources */,
 				CC0000000000000000000002 /* ContentView.swift in Sources */,
+				CC000000000000000000001B /* EnlargerTransition.swift in Sources */,
+				CC0000000000000000000019 /* SettingsSheet.swift in Sources */,
+				CC0000000000000000000018 /* ToolPanels.swift in Sources */,
+				CC00000000000000000000A1 /* Geometry.swift in Sources */,
+				CC00000000000000000000A2 /* CameraDecode.swift in Sources */,
+				CC00000000000000000000A3 /* CropPanel.swift in Sources */,
+				CC00000000000000000000A4 /* CameraPanel.swift in Sources */,
+				CC00000000000000000000A6 /* BlackAndWhite.swift in Sources */,
+				CC00000000000000000000A7 /* PhotoInfo.swift in Sources */,
+				CC0000000000000000000017 /* LibraryView.swift in Sources */,
+				CC0000000000000000000016 /* Theme.swift in Sources */,
 				CC0000000000000000000003 /* ProbeModel.swift in Sources */,
 				CC0000000000000000000004 /* Engine.swift in Sources */,
 				CC0000000000000000000005 /* RAWDecode.swift in Sources */,
@@ -190,7 +263,7 @@
 				CC000000000000000000000C /* ColourTransform.swift in Sources */,
 				CC000000000000000000000D /* Renderer.swift in Sources */,
 				CC000000000000000000000E /* CanvasView.swift in Sources */,
-				CC000000000000000000000F /* JPEGExport.swift in Sources */,
+				CC000000000000000000000F /* ImageExport.swift in Sources */,
 				CC0000000000000000000010 /* Canvas.metal in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -205,6 +278,15 @@
 				BB0000000000000000000017 /* zh-Hans */,
 			);
 			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		BB000000000000000000001C /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				BB000000000000000000001D /* en */,
+				BB000000000000000000001E /* zh-Hans */,
+			);
+			name = Localizable.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */
@@ -271,13 +353,16 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/build/ios";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/build/$(SPK_ENGINE_DIR)";
 				MARKETING_VERSION = 0.1;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "-lspektrafilm_engine -lc++ -framework Metal -framework QuartzCore -framework CoreText -framework CoreGraphics -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.alory1995.spektraprobe;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = iphoneos;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				SPK_ENGINE_DIR = ios;
+				"SPK_ENGINE_DIR[sdk=iphonesimulator*]" = "ios-sim";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -311,13 +396,16 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/build/ios";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/build/$(SPK_ENGINE_DIR)";
 				MARKETING_VERSION = 0.1;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "-lspektrafilm_engine -lc++ -framework Metal -framework QuartzCore -framework CoreText -framework CoreGraphics -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.alory1995.spektraprobe;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = iphoneos;
+				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
+				SPK_ENGINE_DIR = ios;
+				"SPK_ENGINE_DIR[sdk=iphonesimulator*]" = "ios-sim";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;

@@ -1,4 +1,4 @@
-//  Canvas.metal — Layer 2, the output transform, and the display quad.
+//  Canvas.metal — Layer 2, the output transform, the geometry and the canvas.
 //
 //  Ported from the Mac app's `modern_UI/Spektrafilm/Spektrafilm/Canvas/Shaders.metal`
 //  (`luma`, `tonePosition`, `layer2Tone` steps 1–5, `spow`, the two CCTF
@@ -340,32 +340,200 @@ kernel void outputTransform(texture2d<float, access::read>  src [[texture(0)]],
     dst.write(float4(enc, 1.0f), gid);
 }
 
-// ── the display quad (iPad only) ───────────────────────────────────────────────
+// ── geometry and the canvas (from the Mac app's Shaders.metal) ─────────────────
+//
+//  `geometryMap`, `editToSource`, `insideCrop` and `geometryResample` are the
+//  Mac's, verbatim. `canvasFragment` is the Mac's with its histogram, masks and
+//  Digital Intermediate parts left out, and `before` already in Display P3 code
+//  values, like `image` after the output transform.
 
-/// Where the picture goes in the drawable, in normalised device coordinates:
-/// (left, bottom, right, top). The renderer letterboxes it to the view.
-struct DisplayUniforms {
-    float4 rect;
+struct GeometryUniform {           // must match Geometry.Uniform in Geometry.swift
+    float2 centre;                // crop centre, normalised to the source
+    float2 halfExtent;            // crop half-size, normalised
+    float2 cosSin;                // the straighten angle
+    float2 pixelRatio;            // (w/h, h/w) — the rotation is rigid in pixels
+    uint quarterTurns;
+    uint flips;                   // bit 0 horizontal, bit 1 vertical
+    uint active;
+    uint pad;
 };
 
-struct QuadOut {
-    float4 position [[position]];
-    float2 uv;
+struct CanvasUniforms {           // must match CanvasUniforms in Renderer.swift
+    float2 viewportSize;          // in device pixels
+    float2 imageSize;             // the *output* size in logical pixels (the source's while cropping)
+    float2 offset;                // output origin in device pixels
+    float2 pivot;                 // crop tool's edit-space pivot, source-normalised
+    float scale;                  // device pixels per output logical pixel
+    float surroundGray;           // encoded value of the ground
+    float magnification;          // device pixels per *texture* pixel
+    float compareSplit;           // split position, 0…1 across the *output*
+    uint compare;                 // 0 off, 1 split, 2 before-only
+    uint editingCrop;             // show the whole frame, dim outside the crop
+    GeometryUniform geometry;
 };
 
-// uv (0, 0) is the texture's first row, which is the **top** of the picture
-// (the engine writes top row first), so it maps to the rect's top edge. No
-// flip anywhere else — the Mac app once shipped an upside-down print by adding one.
-vertex QuadOut displayVertex(uint vid [[vertex_id]], constant DisplayUniforms &d [[buffer(0)]]) {
-    const float2 corners[4] = { float2(0, 0), float2(1, 0), float2(0, 1), float2(1, 1) };
-    float2 uv = corners[vid];
-    QuadOut out;
-    out.position = float4(mix(d.rect.x, d.rect.z, uv.x), mix(d.rect.w, d.rect.y, uv.y), 0, 1);
-    out.uv = uv;
-    return out;
+//  Output uv → source uv. A transliteration of
+//  `Geometry.sourcePoint(forOutput:imageSize:)`.
+static inline float2 geometryMap(float2 uv, constant GeometryUniform &g) {
+    if (g.active == 0) return uv;
+    float2 u = uv;
+    if (g.flips & 1u) u.x = 1.0 - u.x;
+    if (g.flips & 2u) u.y = 1.0 - u.y;
+    switch (g.quarterTurns) {
+        case 1: u = float2(u.y, 1.0 - u.x); break;
+        case 2: u = float2(1.0 - u.x, 1.0 - u.y); break;
+        case 3: u = float2(1.0 - u.y, u.x); break;
+        default: break;
+    }
+    // Crop-local, in units where one unit of x and one of y are the same
+    // number of source pixels — otherwise the rotation shears on a
+    // non-square frame.
+    float px = (u.x - 0.5) * 2.0 * g.halfExtent.x;
+    float py = (u.y - 0.5) * 2.0 * g.halfExtent.y * g.pixelRatio.y;
+    float rx = px * g.cosSin.x - py * g.cosSin.y;
+    float ry = px * g.cosSin.y + py * g.cosSin.x;
+    return float2(g.centre.x + rx, g.centre.y + ry * g.pixelRatio.x);
 }
 
-fragment float4 displayFragment(QuadOut in [[stage_in]], texture2d<float> picture [[texture(0)]]) {
-    constexpr sampler s(filter::linear, address::clamp_to_edge);
-    return float4(picture.sample(s, in.uv).rgb, 1.0);
+//  Edit space → source, while the crop tool is up: the frame stays level on
+//  screen and the photograph turns under it, a rotation about the pivot.
+//  `Geometry.sourcePoint(forEdit:pivot:imageSize:)`.
+static inline float2 editToSource(float2 e, constant CanvasUniforms &u) {
+    float dx = e.x - u.pivot.x;
+    float dy = (e.y - u.pivot.y) * u.geometry.pixelRatio.y;   // width-fractions
+    float rx = dx * u.geometry.cosSin.x - dy * u.geometry.cosSin.y;
+    float ry = dx * u.geometry.cosSin.y + dy * u.geometry.cosSin.x;
+    return float2(u.pivot.x + rx, u.pivot.y + ry * u.geometry.pixelRatio.x);
+}
+
+/// Whether a *source* uv is inside the oriented crop.
+static inline bool insideCrop(float2 suv, constant GeometryUniform &g) {
+    float dx = suv.x - g.centre.x;
+    float dy = (suv.y - g.centre.y) * g.pixelRatio.y;
+    float lx =  dx * g.cosSin.x + dy * g.cosSin.y;
+    float ly = -dx * g.cosSin.y + dy * g.cosSin.x;
+    return abs(lx) <= g.halfExtent.x && abs(ly) <= g.halfExtent.y * g.pixelRatio.y;
+}
+
+//  Export's geometry pass: the *same* `geometryMap` the canvas uses, so the
+//  file is exactly the part of the frame the canvas shows.
+kernel void geometryResample(texture2d<float, access::sample> src [[texture(0)]],
+                             texture2d<float, access::write> dst [[texture(1)]],
+                             constant GeometryUniform &g [[buffer(0)]],
+                             uint2 gid [[thread_position_in_grid]])
+{
+    if (gid.x >= dst.get_width() || gid.y >= dst.get_height()) return;
+    constexpr sampler lin(filter::linear, address::clamp_to_edge, mip_filter::none);
+    float2 ouv = (float2(gid) + 0.5) / float2(dst.get_width(), dst.get_height());
+    dst.write(float4(src.sample(lin, geometryMap(ouv, g)).rgb, 1), gid);
+}
+
+//  The enlarger transition (EnlargerTransition.swift): on a change of film or
+//  paper the old frame turns into its negative, then a warm light sweeps
+//  across and the new print develops in behind it. Colours here are Display
+//  P3 code values, like everything the canvas draws.
+struct EnlargerUniforms {          // must match EnlargerUniforms in EnlargerTransition.swift
+    float negative;               // 0…1, how far the old frame is its negative
+    float sweep;                  // the light's position across the output, 0…1
+    uint kind;                    // 0 colour negative, 1 black-and-white negative, 2 slide
+    uint active;
+};
+
+/// The film's look of an encoded print colour: dense and brown where the print
+/// is light, the orange mask where it is dark; grey for black and white; and a
+/// slide, which has no negative, dimmed as on an unlit light table.
+static inline float3 enlargerNegative(float3 c, uint kind) {
+    if (kind == 2u) return c * 0.28;
+    float3 inv = 1.0 - c;
+    if (kind == 1u) {
+        float y = dot(inv, float3(0.2126, 0.7152, 0.0722));
+        return float3(mix(0.07, 0.86, y));
+    }
+    return mix(float3(0.10, 0.06, 0.045), float3(0.92, 0.57, 0.31), inv);
+}
+
+/// `now` is the new print, `was` the frame at the change; `x` runs 0…1 across
+/// the output. Ahead of the light, the negative; behind it, the print, pale as
+/// fresh paper at first and coming up to full density a little way back.
+static inline float3 enlarger(float3 now, float3 was, float x, constant EnlargerUniforms &e) {
+    float d = x - e.sweep;                            // > 0: the light has not reached it yet
+    float3 c;
+    if (d > 0.0) {
+        c = mix(was, enlargerNegative(was, e.kind), e.negative);
+    } else {
+        float developed = smoothstep(0.0, 0.16, -d);
+        c = mix(float3(0.93, 0.92, 0.89), now, developed);
+    }
+    float core = exp(-(d * d) / (0.0045 * 0.0045));
+    float halo = exp(-(d * d) / (0.045 * 0.045));
+    c += float3(1.0, 0.92, 0.78) * (0.85 * core + 0.3 * halo);
+    return min(c, float3(1.0));
+}
+
+struct QuadOut { float4 position [[position]]; float2 uv; };
+
+vertex QuadOut canvasVertex(uint vid [[vertex_id]]) {
+    // Two triangles covering clip space; uv has (0,0) at top-left.
+    float2 pos[6] = { {-1,-1}, {1,-1}, {-1,1}, {-1,1}, {1,-1}, {1,1} };
+    QuadOut o;
+    o.position = float4(pos[vid], 0, 1);
+    o.uv = float2(pos[vid].x * 0.5 + 0.5, 0.5 - pos[vid].y * 0.5);
+    return o;
+}
+
+// uv (0, 0) is the texture's first row, which is the **top** of the picture
+// (the engine writes top row first). No flip anywhere — the Mac app once
+// shipped an upside-down print by adding one.
+fragment float4 canvasFragment(QuadOut in [[stage_in]],
+                               texture2d<float> image [[texture(0)]],
+                               texture2d<float> before [[texture(1)]],
+                               texture2d<float> from [[texture(2)]],
+                               constant CanvasUniforms &u [[buffer(0)]],
+                               constant EnlargerUniforms &e [[buffer(1)]])
+{
+    // Below 100 % the image is minified: linear. At or above, every image
+    // pixel covers whole device pixels: nearest, so a 400 % view shows the
+    // actual pixels (and grain) instead of a smear.
+    constexpr sampler lin(filter::linear, address::clamp_to_edge, mip_filter::none);
+    constexpr sampler near(filter::nearest, address::clamp_to_edge, mip_filter::none);
+    float2 px = in.uv * u.viewportSize;                    // device pixel, top-left origin
+    float2 ip = (px - u.offset) / u.scale;                 // output logical pixel
+    float2 ouv = ip / u.imageSize;                         // 0…1 across the output
+    float3 ground = float3(u.surroundGray);
+    // While the crop is being edited the canvas shows the whole frame, turned
+    // under a level crop, and dims what the crop leaves out.
+    float2 suv;
+    if (u.editingCrop != 0) {
+        suv = editToSource(ouv, u);
+        if (suv.x < 0.0 || suv.y < 0.0 || suv.x > 1.0 || suv.y > 1.0) {
+            return float4(ground, 1);
+        }
+    } else {
+        if (ouv.x < 0.0 || ouv.y < 0.0 || ouv.x > 1.0 || ouv.y > 1.0) {
+            return float4(ground, 1);
+        }
+        suv = geometryMap(ouv, u.geometry);
+        if (suv.x < 0.0 || suv.y < 0.0 || suv.x > 1.0 || suv.y > 1.0) {
+            return float4(ground, 1);
+        }
+    }
+    //  Before/after. The split is measured across the **output** — the
+    //  picture — so the line stays on the same part of the frame when the
+    //  view is panned or zoomed, and `before` is sampled through the same
+    //  `suv`, so crop, straighten and flips apply to both halves.
+    bool useBefore = (u.compare == 2u) ||
+                     (u.compare == 1u && ouv.x < u.compareSplit);
+    float3 c;
+    if (useBefore) {
+        c = before.sample(lin, suv).rgb;
+    } else {
+        c = (u.magnification >= 1.0) ? image.sample(near, suv).rgb : image.sample(lin, suv).rgb;
+        if (e.active != 0u) {
+            c = enlarger(c, from.sample(lin, suv).rgb, ouv.x, e);
+        }
+    }
+    if (u.editingCrop != 0 && !insideCrop(suv, u.geometry)) {
+        c = mix(c, ground, 0.6);
+    }
+    return float4(c, 1);
 }

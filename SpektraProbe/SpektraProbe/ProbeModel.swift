@@ -7,6 +7,7 @@
 //  Display P3 for the canvas, sRGB for a JPEG export — through the engine's
 //  own output transform.
 
+import ImageIO
 import Metal
 import PhotosUI
 import SwiftUI
@@ -97,6 +98,26 @@ struct OpenOutcome {
     var settings = FilmSettings()
     var sentWire: [String: ParamValue] = [:]
     var latitude: [String: Any] = [:]
+    /// The camera decode the frame was read with, and what the RAW said.
+    var camera = CameraDecode()
+    var asShot: AsShot?
+    var lensCorrectionSupported = false
+}
+
+/// Before/after on the canvas: off, or the photograph without the film left
+/// of a divider. Holding a finger on the picture shows it whole, either way.
+enum CompareMode: Equatable { case off, split }
+
+/// Scene Latitude's measurement (`spk_scene_latitude`): the film and paper's
+/// latitude, and the scene's extremes, in EV around mid-grey.
+struct LatitudeReading: Equatable {
+    var stops: Double
+    var filmShadowEV: Double
+    var filmHighlightEV: Double
+    var sceneDarkestEV: Double
+    var sceneBrightestEV: Double
+    var suggestedHighlight: Double?
+    var suggestedShadow: Double?
 }
 
 struct PreviewOutcome {
@@ -147,7 +168,22 @@ final class ProbeModel: ObservableObject {
     @Published var settings = FilmSettings() { didSet { settingsDidChange() } }
     @Published var adjustments = Adjustments() { didSet { editHappened() } }
     /// JPEG quality, 10…100. The Mac app's default is 0.95.
-    @Published var exportQuality: Double = 95
+    /// Format, JPEG quality and TIFF depth (`ImageExport.swift`), remembered
+    /// between launches.
+    @Published var exportOptions = ExportOptions.load() {
+        didSet { if exportOptions != oldValue { exportOptions.save(); scheduleEstimate() } }
+    }
+    /// JPEG quality, 10…100: `exportOptions.quality` under its old name.
+    var exportQuality: Double {
+        get { exportOptions.quality }
+        set { exportOptions.quality = newValue }
+    }
+    /// The export's size, estimated from the preview ("≈ 20 MB"); nil until one is.
+    @Published private(set) var exportEstimate: String?
+    private(set) var exportEstimateBytes: Int?
+    /// The Export panel is up, so the estimate is worth keeping current.
+    @Published var exportPanelShown = false { didSet { if exportPanelShown { scheduleEstimate() } } }
+    private var estimateTask: Task<Void, Never>?
     @Published var busy: String?
     @Published var error: String?
     @Published var crashNote: String?
@@ -162,17 +198,23 @@ final class ProbeModel: ObservableObject {
     /// Why the last placement was refused, in words, or nil.
     @Published private(set) var placementNote: String?
     @Published private(set) var latitudeLines: [String] = []
+    /// The same measurement as numbers, for the Exposure panel's drawing.
+    @Published private(set) var latitude: LatitudeReading?
 
     /// What the canvas draws: the live print and the working space → P3 transform.
     @Published private(set) var print: MTLTexture?
     @Published private(set) var displayTransform: ColourTransform?
     @Published private(set) var lastExport: URL?
+    /// The last export in words: its size, megabytes and quality.
+    @Published private(set) var lastExportSummary: String?
 
     @Published var deviceLines: [String] = []
     @Published var photoLines: [String] = []
     @Published var previewLines: [String] = []
     @Published var fullLines: [String] = []
     @Published var exportLines: [String] = []
+    /// The zoomed canvas's full-resolution renders, and the camera rereads.
+    @Published var viewerLines: [String] = []
 
     /// The library (`Library.swift`) and the photo that is open.
     @Published private(set) var photos: [LibraryPhoto] = []
@@ -183,7 +225,38 @@ final class ProbeModel: ObservableObject {
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
 
+    // MARK: geometry, viewer and camera decode
+
+    /// Crop, straighten, quarter turns and flips (the Mac's `Geometry`). The
+    /// canvas, the thumbnail and every export go through it; the engine never
+    /// sees it, so changing it costs a redraw and no render.
+    @Published var geometry = Geometry() { didSet { if geometry != oldValue { editHappened() } } }
+    /// The camera's white balance and lens correction, applied when the RAW is
+    /// read; a change reads it again (`reopenForCamera`).
+    @Published var camera = CameraDecode() { didSet { if camera != oldValue { cameraDidChange() } } }
+    /// The RAW's own white balance, and whether it carries a lens correction.
+    @Published private(set) var asShot: AsShot?
+    @Published private(set) var lensCorrectionSupported = false
+    @Published private(set) var photoIsRAW = false
+    /// The crop tool is up: the canvas shows the whole frame and the handles.
+    @Published var cropping = false
+    @Published var compare: CompareMode = .off { didSet { if compare != .off { ensureBefore() } } }
+    /// The white balance eyedropper is armed: the next tap on the picture measures.
+    @Published var pickingNeutral = false
+    /// The canvas's zoom for a label, set when a gesture ends; nil at fit.
+    @Published var canvasZoomPercent: Int?
+    /// The photo's information card is over the picture (`PhotoInfoOverlay`).
+    /// Stays up while moving between photos, so it can be read along a roll.
+    @Published var showingInfo = false
+    /// The photograph without the film, at preview size, in Display P3.
+    @Published private(set) var before: MTLTexture?
+    /// The full-resolution print for a zoomed-in canvas, while it is the
+    /// print of what the controls say (cleared by every new preview).
+    @Published private(set) var fullPrint: MTLTexture?
+
     let renderer: Renderer?
+    /// The negative-and-light transition on a change of film or paper.
+    let enlarger = EnlargerTransition()
     private let queue = DispatchQueue(label: "SpektraProbe.engine", qos: .userInitiated)
     private let device: MTLDevice = MTLCreateSystemDefaultDevice()!
     private let box = EngineBox()
@@ -193,12 +266,25 @@ final class ProbeModel: ObservableObject {
     private var sentWire: [String: ParamValue] = [:]
     /// An edit arrived while a render was running.
     private var pendingPush = false
+    /// What the open frame was read with.
+    private var appliedCamera = CameraDecode()
+    private var reopening = false
+    private var pendingReopen = false
+    /// A photo is being opened: its engine work is queued or running.
+    private var opening = false
+    private var fullInFlight = false
+    /// Bumped by every new preview, so a full render that lands after an edit
+    /// is not shown as the edit's.
+    private var previewGeneration = 0
+    private var beforeTask: Task<Void, Never>?
 
     /// Undo keeps whole states, one per burst of edits: a slider drag, or a
     /// run of taps less than 0.7 s apart, is one step.
     private struct Snapshot: Equatable {
         var settings: FilmSettings
         var adjustments: Adjustments
+        var geometry = Geometry()
+        var camera = CameraDecode()
     }
     private var undoStack: [Snapshot] = []
     private var redoStack: [Snapshot] = []
@@ -213,7 +299,12 @@ final class ProbeModel: ObservableObject {
     /// which is not an edit and must not be recorded as one.
     private var applyingState = false
     private static let lastPhotoKey = "SpektraProbe.lastPhoto"
-    private var snapshot: Snapshot { Snapshot(settings: settings, adjustments: adjustments) }
+    private var snapshot: Snapshot {
+        Snapshot(settings: settings, adjustments: adjustments, geometry: geometry, camera: camera)
+    }
+
+    /// The open frame's full-resolution size, which the crop is measured in.
+    var sourceSize: CGSize { opened.map { CGSize(width: $0.width, height: $0.height) } ?? .zero }
 
     /// long ÷ short of the open photograph, for the film format (the Mac's
     /// `physicalAspect`; a crop does not count, which is its default too).
@@ -226,7 +317,7 @@ final class ProbeModel: ObservableObject {
         renderer = try? Renderer(device: device)
         crashNote = ProbeModel.describeLeftover(InFlight.takeLeftover())
         deviceLines = ProbeModel.describeDevice(device)
-        if renderer == nil { error = "The canvas shaders did not load." }
+        if renderer == nil { error = String(localized: "The canvas shaders did not load.") }
         Task {
             await startEngine()
             refreshLibrary()
@@ -253,8 +344,33 @@ final class ProbeModel: ObservableObject {
             guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count else { return nil }
             return arguments[i + 1]
         }
+        // `--export-format jpeg|png|tiff8|tiff16`: the Export panel's choice,
+        // for screenshots from the Mac (it is saved, like a tap would be).
+        if let format = value("--export-format") {
+            var o = exportOptions
+            switch format {
+            case "png": o.format = .png
+            case "tiff8": o.format = .tiff; o.tiffBits = 8
+            case "tiff16": o.format = .tiff; o.tiffBits = 16
+            default: o.format = .jpeg
+            }
+            exportOptions = o
+        }
         if let name = value("--open") {
             await open(LibraryPhoto(name: name))
+            showingInfo = arguments.contains("--show-info")
+            return true
+        }
+        if let name = value("--selftest-info") {
+            await open(LibraryPhoto(name: name))
+            if let photo = current {
+                let asShot = self.asShot, pixels = sourceSize
+                let info = await Task.detached { PhotoInfo.read(url: photo.url, asShot: asShot, pixels: pixels) }.value
+                exportLines = info.sections.flatMap { section in
+                    ["\(section.title):"] + section.rows.map { "  \($0.label): \($0.value)" }
+                }
+                saveResults()
+            }
             return true
         }
         if let name = value("--forget") {
@@ -267,6 +383,25 @@ final class ProbeModel: ObservableObject {
         }
         if let name = value("--selftest-library") {
             await runLibrarySelfTest(name)
+            return true
+        }
+        if let name = value("--selftest-geometry") {
+            await open(LibraryPhoto(name: name))
+            if hasPhoto { await runGeometrySelfTest() }
+            return true
+        }
+        if arguments.contains("--selftest-raws") {
+            await runRAWsSelfTest()
+            return true
+        }
+        if let name = value("--selftest-export") {
+            await open(LibraryPhoto(name: name))
+            if hasPhoto { await runExportSelfTest() }
+            return true
+        }
+        if let name = value("--selftest-bw") {
+            await open(LibraryPhoto(name: name))
+            if hasPhoto { await runBlackAndWhiteSelfTest() }
             return true
         }
         if let name = value("--selftest-film") {
@@ -365,6 +500,297 @@ final class ProbeModel: ObservableObject {
         saveResults()
     }
 
+    /// `--selftest-geometry`: a 4:3 crop straightened 4°, turned right and
+    /// flipped, then undone and redone, and exported; the camera set to
+    /// Tungsten, the eyedropper's reading at the centre, the lens correction
+    /// switched, a Tungsten export; the edits read back after reopening the
+    /// photo; the full-resolution canvas print and what one adjustment costs
+    /// at that size; then everything put back as it was.
+    private func runGeometrySelfTest() async {
+        guard let photo = current else { return }
+        var lines: [String] = []
+        let original = (geometry, camera)
+        func waitForCamera() async {
+            for _ in 0..<400 where reopening || camera != appliedCamera {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        lines.append(String(format: "source %.0f × %.0f; RAW %@; as shot %@; lens correction in the file: %@",
+                            sourceSize.width, sourceSize.height, photoIsRAW ? "yes" : "no",
+                            asShot.map { String(format: "%.0f K, tint %+.1f", $0.temperature, $0.tint) } ?? "none",
+                            lensCorrectionSupported ? "yes" : "no"))
+        geometry = Geometry()
+        setAspect(.r4x3)
+        straighten(to: 4)
+        rotate(clockwise: true)
+        flip(horizontal: true)
+        let cut = geometry
+        undo()
+        lines.append("undo → identity: \(geometry.isIdentity)")
+        redo()
+        lines.append("redo → the crop again: \(geometry == cut)")
+        exportQuality = 90
+        await exportJPEG()
+        let expected = geometry.outputSize(for: sourceSize)
+        lines.append(String(format: "4:3, 4°, turned right, flipped (expect %.0f × %.0f): ", expected.width, expected.height)
+                     + (exportLines.first ?? error ?? "no export"))
+        if photoIsRAW {
+            let started = CFAbsoluteTimeGetCurrent()
+            setWhiteBalance(.tungsten)
+            await waitForCamera()
+            lines.append(String(format: "Tungsten: RAW read again and the engine reopened in %.2f s (%@)",
+                                CFAbsoluteTimeGetCurrent() - started, error ?? "OK"))
+            await exportJPEG()
+            lines.append("Tungsten export: " + (exportLines.first ?? error ?? "no export"))
+            let url = photo.url, decode = camera
+            let neutral = await Task.detached { RAWDecode.neutral(at: CGPoint(x: 0.5, y: 0.5), in: url, camera: decode) }.value
+            lines.append(neutral.map { String(format: "eyedropper at the centre: %.0f K, tint %+.1f", $0.temperature, $0.tint) }
+                         ?? "eyedropper: no reading")
+            let wasOn = camera.lensCorrection
+            let size = sourceSize
+            setLensCorrection(!wasOn)
+            await waitForCamera()
+            lines.append(String(format: "lens correction %@ → %@: frame %.0f × %.0f → %.0f × %.0f",
+                                wasOn ? "on" : "off", wasOn ? "off" : "on",
+                                size.width, size.height, sourceSize.width, sourceSize.height))
+        }
+        saveNow()
+        let saved = SidecarStore.load(for: photo)
+        lines.append("saved: geometry \(saved?.geometry == geometry), camera \(saved?.camera == camera)")
+        let (g, c) = (geometry, camera)
+        await open(photo)
+        lines.append("reopened: geometry restored \(geometry == g), camera restored \(camera == c)")
+        geometry = Geometry()
+        let started = CFAbsoluteTimeGetCurrent()
+        requestFullResolution()
+        for _ in 0..<200 where fullPrint == nil { try? await Task.sleep(for: .milliseconds(50)) }
+        if let full = fullPrint, let renderer, let transform = displayTransform {
+            lines.append(String(format: "full-resolution canvas print %d × %d in %.2f s",
+                                full.width, full.height, CFAbsoluteTimeGetCurrent() - started))
+            let t0 = CFAbsoluteTimeGetCurrent()
+            _ = try? renderer.finish(print: full, uniforms: adjustments.uniforms, transform: transform)
+            lines.append(String(format: "one adjustment at that size (Layer 2 + Display P3, read back): %.0f ms",
+                                (CFAbsoluteTimeGetCurrent() - t0) * 1000))
+        } else {
+            lines.append("full-resolution canvas print: none (\(error ?? "timed out"))")
+        }
+        (geometry, camera) = original
+        await waitForCamera()
+        saveNow()
+        lines.append("put back: geometry \(geometry == original.0), camera \(camera == original.1)")
+        exportLines = lines
+        saveResults()
+    }
+
+    /// `--selftest-bw`: Tri-X on Multigrade with no filter, then each kind of
+    /// lens filter and the paper's two extreme grades. Records the print's
+    /// tones each time and exports three of them, then puts the photo's
+    /// settings back. A filter should move the mean little (the factor is
+    /// given) and the grades should spread the tones apart or together.
+    private func runBlackAndWhiteSelfTest() async {
+        var lines: [String] = []
+        let original = settings
+        func step(_ what: String) async {
+            await settle()
+            lines.append(what + ": " + (error ?? printTones()))
+        }
+        selectFilm("kodak_tri_x_400")
+        lines.append("paper \(settings.printStock); grades table for \(PaperGrades.shared?.paper ?? "none") with \(PaperGrades.shared?.grades.count ?? 0) grades")
+        await step("Tri-X, no filter, grade 2")
+        exportQuality = 90
+        await exportJPEG()
+        lines.append("  export: " + (exportLines.first ?? error ?? "none"))
+        for filter in [LensFilter.w8, .w21, .w25, .w58, .w47] {
+            settings.lensFilter = filter
+            await step("filter \(filter.rawValue)")
+        }
+        settings.lensFilter = .w25
+        await settle()
+        await exportJPEG()
+        lines.append("  red 25 export: " + (exportLines.first ?? error ?? "none"))
+        settings.lensFilter = .none
+        for grade in ["00", "5"] {
+            settings.paperGrade = grade
+            await step("grade \(grade)")
+        }
+        await exportJPEG()
+        lines.append("  grade 5 export: " + (exportLines.first ?? error ?? "none"))
+        settings.paperGrade = PaperGrades.normal
+        selectFilm("kodak_portra_400")
+        await settle()
+        lines.append("back to Portra 400, camera_filter sent as \(settings.wire["camera_filter"].map { "\($0)" } ?? "?")")
+        settings = original
+        await settle()
+        saveNow()
+        lines.append("put back: \(settings == original)")
+        exportLines = lines
+        saveResults()
+    }
+
+    /// The live print's tones through the display transform, untouched by
+    /// Adjust: mean, spread (standard deviation) and the 5th and 95th
+    /// percentiles, 0…1, on every fourth pixel.
+    private func printTones() -> String {
+        guard let print, let renderer, let transform = displayTransform,
+              let finished = try? renderer.finish(print: print, uniforms: Layer2Uniforms(), transform: transform)
+        else { return "no print" }
+        let t = finished.texture
+        var px = [UInt16](repeating: 0, count: t.width * t.height * 4)
+        px.withUnsafeMutableBytes { raw in
+            t.getBytes(raw.baseAddress!, bytesPerRow: t.width * 8,
+                       from: MTLRegionMake2D(0, 0, t.width, t.height), mipmapLevel: 0)
+        }
+        var values: [Double] = []
+        for y in stride(from: 0, to: t.height, by: 4) {
+            for x in stride(from: 0, to: t.width, by: 4) {
+                let i = (y * t.width + x) * 4
+                values.append((0.2126 * Double(px[i]) + 0.7152 * Double(px[i + 1]) + 0.0722 * Double(px[i + 2])) / 65535)
+            }
+        }
+        guard !values.isEmpty else { return "empty print" }
+        let mean = values.reduce(0, +) / Double(values.count)
+        let spread = (values.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(values.count)).squareRoot()
+        values.sort()
+        return String(format: "mean %.3f, spread %.3f, 5%% %.3f, 95%% %.3f", mean, spread,
+                      values[values.count / 20], values[values.count * 19 / 20])
+    }
+
+    /// `--selftest-export`: JPEG at 95 and 60, PNG, TIFF at 8 and 16 bits —
+    /// each one's estimate, then a real export, its size beside the estimate,
+    /// and what the written file says it is, read back from it. Each test file
+    /// is deleted afterwards; the panel's own settings are put back.
+    private func runExportSelfTest() async {
+        var lines: [String] = []
+        let original = exportOptions, originalSettings = settings, originalGeometry = geometry
+        let cases = [ExportOptions(format: .jpeg, quality: 95), ExportOptions(format: .jpeg, quality: 60),
+                     ExportOptions(format: .png), ExportOptions(format: .tiff, tiffBits: 8),
+                     ExportOptions(format: .tiff, tiffBits: 16)]
+        // Two different pictures from one frame: the factors were measured on
+        // the first, so the second says how far they carry.
+        for pass in 0..<2 {
+        if pass == 1 {
+            selectFilm("kodak_ektar_100")
+            setAspect(.square)
+            await settle()
+            lines.append("Ektar 100, cropped 1:1:")
+        } else {
+            lines.append("\(StockCatalog.shared.name(settings.filmStock)), full frame:")
+        }
+        for options in cases {
+            exportOptions = options
+            let started = CFAbsoluteTimeGetCurrent()
+            await estimateExportSize()
+            let estimateSeconds = CFAbsoluteTimeGetCurrent() - started
+            let estimate = exportEstimateBytes ?? 0
+            await export()
+            guard let url = lastExport, let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+                lines.append("\(options.summary): export failed: \(error ?? "?")")
+                continue
+            }
+            lines.append(String(format: "%@: estimate %.1f MB (in %.2f s), file %.1f MB, file / estimate %.3f",
+                                options.summary, Double(estimate) / 1e6, estimateSeconds, Double(size) / 1e6,
+                                Double(size) / Double(max(estimate, 1))))
+            lines.append("  " + Self.describeFile(url) + "; " + (exportLines.dropFirst(2).first ?? ""))
+            try? FileManager.default.removeItem(at: url)
+        }
+        }
+        settings = originalSettings
+        geometry = originalGeometry
+        await settle()
+        saveNow()
+        exportOptions = original
+        lastExport = nil
+        lastExportSummary = nil
+        exportLines = lines
+        saveResults()
+    }
+
+    /// `--selftest-raws`: every photo in the library, at the Mac app's
+    /// defaults for a new frame — and its lens correction off, as the Mac
+    /// starts it — so the result can be set beside SpektraLab's: what the
+    /// decode says, how long each step takes, and a full-resolution sRGB JPEG
+    /// at quality 95 (kept in Exports). A photo with edits of its own is
+    /// skipped and left as it is; the others end as they began.
+    private func runRAWsSelfTest() async {
+        var lines: [String] = []
+        let originalOptions = exportOptions
+        exportOptions = ExportOptions(format: .jpeg, quality: 95)
+        for photo in photos {
+            if SidecarStore.isEdited(photo) {
+                lines.append("\(photo.name): skipped, it has edits of its own")
+                continue
+            }
+            let started = CFAbsoluteTimeGetCurrent()
+            await open(photo)
+            guard hasPhoto, current == photo else {
+                lines.append("\(photo.name): DID NOT OPEN — \(error ?? "no error given")")
+                error = nil
+                continue
+            }
+            let openSeconds = CFAbsoluteTimeGetCurrent() - started
+            if lensCorrectionSupported { camera.lensCorrection = false }
+            await settle()
+            for _ in 0..<400 where reopening || camera != appliedCamera { try? await Task.sleep(for: .milliseconds(50)) }
+            let info = await Task.detached { [asShot, sourceSize] in
+                PhotoInfo.read(url: photo.url, asShot: asShot, pixels: sourceSize)
+            }.value
+            func row(_ label: String) -> String {
+                info.sections.flatMap(\.rows).first { $0.label == String(localized: String.LocalizationValue(label)) }?.value ?? "?"
+            }
+            lines.append("\(photo.name): \(row("Camera")), \(row("Lens")), \(row("Format"))")
+            lines.append(String(format: "  frame %.0f × %.0f; opened in %.2f s; %@; %@; as shot %@; lens correction in the file: %@",
+                                sourceSize.width, sourceSize.height, openSeconds,
+                                photoLines.first { $0.hasPrefix("RAW decode") } ?? "",
+                                previewLines.first ?? "", row("As shot"),
+                                lensCorrectionSupported ? "yes (turned off, as the Mac starts)" : "no"))
+            await export()
+            lines.append("  export: " + (exportLines.first ?? error ?? "none")
+                         + (exportLines.dropFirst(2).first.map { "; " + $0 } ?? ""))
+            // The file must be this photo's frame and not another's.
+            let expected = geometry.outputSize(for: sourceSize)
+            let own = "\(Int(expected.width)) × \(Int(expected.height))"
+            lines.append("  frame check: the export is \(exportLines.first?.contains(own) == true ? "this photo's own \(own)" : "NOT this photo's \(own)")")
+            error = nil
+            camera = CameraDecode()
+            for _ in 0..<400 where reopening || camera != appliedCamera { try? await Task.sleep(for: .milliseconds(50)) }
+            saveNow()
+        }
+        // The race this test once found: a camera change on one photo, the
+        // next photo opened at once, without waiting. The engine must end on
+        // the second photo's frame.
+        let readable = photos.filter { !SidecarStore.isEdited($0) }
+        if readable.count >= 2 {
+            let (a, b) = (readable[0], readable[1])
+            await open(a)
+            camera.lensCorrection.toggle()
+            await open(b)
+            await renderFull()
+            let own = "\(Int(sourceSize.width)) × \(Int(sourceSize.height))"
+            let result = fullLines.first { $0.hasPrefix("Result") } ?? "no render"
+            lines.append("race check (\(a.name) changed, \(b.name) opened at once): engine holds \(result); "
+                         + (result.contains(own) ? "this photo's own frame, as it should" : "NOT \(b.name)'s \(own)"))
+            await open(a)
+            camera = CameraDecode()
+            for _ in 0..<400 where reopening || camera != appliedCamera { try? await Task.sleep(for: .milliseconds(50)) }
+            saveNow()
+        }
+        exportOptions = originalOptions
+        exportLines = lines
+        saveResults()
+    }
+
+    /// What a written image file says about itself.
+    nonisolated private static func describeFile(_ url: URL) -> String {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let p = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return "unreadable" }
+        let tiff = p[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
+        func v(_ x: Any?) -> String { x.map { "\($0)" } ?? "-" }
+        return "read back: \(CGImageSourceGetType(source).map { $0 as String } ?? "?") "
+            + "\(v(p[kCGImagePropertyPixelWidth]))×\(v(p[kCGImagePropertyPixelHeight])), "
+            + "\(v(p[kCGImagePropertyDepth])) bits, compression \(v(tiff?[kCGImagePropertyTIFFCompression])), "
+            + "profile \(v(p[kCGImagePropertyProfileName])), EXIF \(p[kCGImagePropertyExifDictionary] == nil ? "no" : "yes")"
+    }
+
     // MARK: running work on the engine's queue
 
     private func onEngine<T>(_ work: @escaping () throws -> T) async throws -> T {
@@ -380,7 +806,7 @@ final class ProbeModel: ObservableObject {
     // MARK: steps
 
     func startEngine() async {
-        busy = "Starting the engine…"
+        busy = String(localized: "Starting the engine…")
         let device = self.device, box = self.box
         do {
             let caps = try await onEngine { () -> [String: Any] in
@@ -394,7 +820,7 @@ final class ProbeModel: ObservableObject {
             deviceLines.append("Engine: \(Engine.buildInfo)")
             deviceLines.append("Engine core: \(core) on \(gpu) — started OK")
         } catch {
-            self.error = "The engine did not start: \(error)"
+            self.error = String(localized: "The engine did not start: \(String(describing: error))")
         }
         busy = nil
         saveResults()
@@ -405,15 +831,22 @@ final class ProbeModel: ObservableObject {
     func open(_ photo: LibraryPhoto) async {
         guard busy == nil else { return }
         leaveCurrentPhoto()
+        // A camera reread asked for on the photo being left would otherwise
+        // queue its engine work behind this open and leave the engine on the
+        // old frame under the new photo's name (`reopenForCamera`).
+        opening = true
+        pendingReopen = false
+        defer { opening = false }
         error = nil
         previewEdge = ProbeModel.screenLongEdgePixels()
         let saved = SidecarStore.load(for: photo)
         let settings = saved?.settings ?? FilmSettings(), edge = previewEdge
+        let camera = saved?.camera ?? CameraDecode()
         let device = self.device, box = self.box, progress = progressReporter()
-        busy = "Opening \(photo.name)…"
+        busy = String(localized: "Opening \(photo.name)…")
         do {
             let outcome = try await onEngine {
-                try ProbeModel.openAndPreview(photo.url, settings: settings, edge: edge,
+                try ProbeModel.openAndPreview(photo.url, settings: settings, camera: camera, edge: edge,
                                               device: device, box: box, progress: progress)
             }
             opened = outcome
@@ -425,7 +858,17 @@ final class ProbeModel: ObservableObject {
             applyingState = true
             self.settings = outcome.settings
             adjustments = saved?.adjustments ?? Adjustments()
+            geometry = saved?.geometry ?? Geometry()
+            self.camera = camera
             applyingState = false
+            appliedCamera = camera
+            asShot = outcome.asShot
+            lensCorrectionSupported = outcome.lensCorrectionSupported
+            photoIsRAW = outcome.isRAW
+            pickingNeutral = false
+            before = nil
+            beforeTask?.cancel()
+            beforeTask = nil
             committed = snapshot
             undoStack = []
             redoStack = []
@@ -439,8 +882,10 @@ final class ProbeModel: ObservableObject {
             fullLines = []
             exportLines = []
             lastExport = nil
+            lastExportSummary = nil
             displayTransform = outcome.display
             show(outcome.preview)
+            ensureBefore()
             photoLines = [
                 "File: \(outcome.file)\(outcome.isRAW ? "" : " (not a RAW)")",
                 String(format: "Size: %d × %d = %.1f MP", outcome.width, outcome.height,
@@ -455,7 +900,7 @@ final class ProbeModel: ObservableObject {
                     ?? "Saved edits: none — the Mac's defaults for a new frame",
             ]
         } catch {
-            self.error = "Could not open \(photo.name): \(error)"
+            self.error = String(localized: "Could not open \(photo.name): \(String(describing: error))")
         }
         busy = nil
         saveResults()
@@ -471,6 +916,7 @@ final class ProbeModel: ObservableObject {
 
     /// Every edit: start or extend the burst it belongs to, and schedule a save.
     private func editHappened() {
+        scheduleEstimate()
         guard hasPhoto, !applyingState, let committed else { return }
         if burstBase == nil { burstBase = committed }
         burstTimer?.cancel()
@@ -515,8 +961,11 @@ final class ProbeModel: ObservableObject {
         applyingState = true
         settings = state.settings
         adjustments = state.adjustments
+        geometry = state.geometry
+        camera = state.camera
         applyingState = false
         committed = state
+        if state.camera != appliedCamera { Task { await reopenForCamera() } }
         highlightDraft = state.settings.placement.highlightPullBack
         shadowDraft = state.settings.placement.shadowPullBack
         updateUndoFlags()
@@ -543,7 +992,8 @@ final class ProbeModel: ObservableObject {
         saveTimer?.cancel()
         saveTimer = nil
         guard let current, hasPhoto else { return }
-        SidecarStore.save(settings: settings, adjustments: adjustments, for: current)
+        SidecarStore.save(settings: settings, adjustments: adjustments, geometry: geometry, camera: camera,
+                          for: current)
         if SidecarStore.isEdited(current) { edited.insert(current.name) } else { edited.remove(current.name) }
         thumbnailTimer?.cancel()
         thumbnailTimer = Task { [weak self] in
@@ -557,9 +1007,10 @@ final class ProbeModel: ObservableObject {
     /// adjustments and the display transform, small, cached on disk.
     func captureThumbnail() {
         guard hasPhoto, let current, let print, let renderer, let transform = displayTransform else { return }
-        let uniforms = adjustments.uniforms
+        let uniforms = adjustments.uniforms, geometry = self.geometry
         Task.detached(priority: .utility) { [weak self] in
-            guard let finished = try? renderer.finish(print: print, uniforms: uniforms, transform: transform),
+            guard let finished = try? renderer.finish(print: print, uniforms: uniforms, transform: transform,
+                                                      geometry: geometry),
                   let image = Renderer.makeCGImage(finished.texture, space: transform.space),
                   let small = Thumbnails.downscaled(image) else { return }
             Thumbnails.store(small, for: current)
@@ -579,7 +1030,12 @@ final class ProbeModel: ObservableObject {
         captureThumbnail()
     }
 
-    func appLeavingScreen() { leaveCurrentPhoto() }
+    func appLeavingScreen() {
+        leaveCurrentPhoto()
+        // The zoomed canvas's full-resolution print is about 1 GB with its
+        // canvas copies; a background app that holds it is the first to go.
+        fullPrint = nil
+    }
 
     // MARK: the library
 
@@ -617,7 +1073,7 @@ final class ProbeModel: ObservableObject {
                 let photo = try Library.importCopy(of: url)
                 first = first ?? photo
             } catch {
-                self.error = "Could not import \(url.lastPathComponent): \(error.localizedDescription)"
+                self.error = String(localized: "Could not import \(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
         refreshLibrary()
@@ -628,7 +1084,8 @@ final class ProbeModel: ObservableObject {
     /// one) copied into the library, the first one opened.
     func importFromPhotos(_ items: [PhotosPickerItem]) async {
         guard !items.isEmpty, busy == nil else { return }
-        busy = "Importing \(items.count) photo\(items.count == 1 ? "" : "s") from Photos…"
+        busy = items.count == 1 ? String(localized: "Importing 1 photo from Photos…")
+                                : String(localized: "Importing \(items.count) photos from Photos…")
         var first: LibraryPhoto?
         var failed = 0
         for item in items {
@@ -639,7 +1096,10 @@ final class ProbeModel: ObservableObject {
             }
         }
         busy = nil
-        if failed > 0 { error = "\(failed) photo\(failed == 1 ? "" : "s") could not be imported from Photos." }
+        if failed > 0 {
+            error = failed == 1 ? String(localized: "1 photo could not be imported from Photos.")
+                                : String(localized: "\(failed) photos could not be imported from Photos.")
+        }
         refreshLibrary()
         if let first { await open(first) }
     }
@@ -671,11 +1131,15 @@ final class ProbeModel: ObservableObject {
                 show(outcome)
                 readLatitude(outcome.latitude)
             } catch {
-                self.error = "Could not apply the change: \(error)"
+                self.error = String(localized: "Could not apply the change: \(String(describing: error))")
                 break
             }
         } while pendingPush
         rendering = false
+        // Everything the controls ask for is on the canvas, so the enlarger's
+        // light may run. A render that began before the change does not count:
+        // the change is still unsent then.
+        if settings.delta(from: sentWire).isEmpty { enlarger.settled() }
         saveResults()
     }
 
@@ -685,10 +1149,22 @@ final class ProbeModel: ObservableObject {
         while rendering { try? await Task.sleep(for: .milliseconds(50)) }
     }
 
-    func selectFilm(_ id: String) { settings.selectFilm(id) }
-    func selectPaper(_ id: String) { settings.selectPaper(id) }
+    func selectFilm(_ id: String) { changeStock { $0.selectFilm(id) } }
+    func selectPaper(_ id: String) { changeStock { $0.selectPaper(id) } }
     /// "No print profile": scan the developed film.
-    func selectNoPrint() { settings.scanFilm = true }
+    func selectNoPrint() { changeStock { $0.scanFilm = true } }
+
+    /// A change of film or paper. When it changes anything, the canvas shows
+    /// it as an enlarger would (`EnlargerTransition`): the new film's negative
+    /// of the picture, then the print developing in behind a light.
+    private func changeStock(_ change: (inout FilmSettings) -> Void) {
+        var next = settings
+        change(&next)
+        if next != settings && hasPhoto && busy == nil {
+            enlarger.begin(kind: next.filmIsPositive ? .slide : next.filmIsMonochrome ? .monochrome : .colour)
+        }
+        settings = next
+    }
     func setFrame(_ id: String) { settings.setFrame(id, aspect: aspect) }
     func setSide(_ side: FilmSide) { settings.setSide(side, aspect: aspect) }
     func setSideLength(_ mm: Double) { settings.setSideLength(mm, aspect: aspect) }
@@ -743,30 +1219,30 @@ final class ProbeModel: ObservableObject {
                                                             fallback: issue["message"] as? String)
             }
         } catch {
-            placementNote = "Scene Placement failed: \(error)"
+            placementNote = String(localized: "Scene Placement failed: \(String(describing: error))")
         }
         highlightDraft = settings.placement.highlightPullBack
         shadowDraft = settings.placement.shadowPullBack
     }
 
-    /// The Mac's refusal sentences (`LatitudeModel.message`), in English.
+    /// The Mac's refusal sentences (`LatitudeModel.message`), in the interface's language.
     private static func placementMessage(code: String?, side: String?, fallback: String?) -> String {
         let top = side != "shadow"
         switch code {
         case "pull_back_below_minimum":
-            return top ? "Pull back further: the scene's brightest part is still past the latitude's edge."
-                       : "Pull back further: the scene's darkest part is still past the latitude's edge."
+            return top ? String(localized: "Pull back further: the scene's brightest part is still past the latitude's edge.")
+                       : String(localized: "Pull back further: the scene's darkest part is still past the latitude's edge.")
         case "room_below_minimum":
-            return top ? "Pull back a little more: this close to the latitude's edge the highlights would turn too sharply."
-                       : "Pull back a little more: this close to the latitude's edge the shadows would turn too sharply."
+            return top ? String(localized: "Pull back a little more: this close to the latitude's edge the highlights would turn too sharply.")
+                       : String(localized: "Pull back a little more: this close to the latitude's edge the shadows would turn too sharply.")
         case "out_of_range":
-            return "Pull back less: this is further than the curve can reach."
+            return String(localized: "Pull back less: this is further than the curve can reach.")
         case "pull_back_exceeds_max_lift":
-            return "Pull back less: this is past the most the shadows can be lifted."
+            return String(localized: "Pull back less: this is past the most the shadows can be lifted.")
         case "knees_cross":
-            return "The highlight and shadow curves would cross: pull back less on one side."
+            return String(localized: "The highlight and shadow curves would cross: pull back less on one side.")
         default:
-            return fallback.map { "Not applied: \($0)" } ?? "Not applied."
+            return fallback.map { String(localized: "Not applied: \($0)") } ?? String(localized: "Not applied.")
         }
     }
 
@@ -782,39 +1258,56 @@ final class ProbeModel: ObservableObject {
             String(format: "This scene: darkest %+.1f EV, brightest %+.1f EV",
                    d(low["scene_extreme_ev"]), d(high["scene_extreme_ev"])),
         ]
+        var reading = LatitudeReading(stops: d(medium["latitude_stops"]),
+                                      filmShadowEV: d(medium["shadow_ev"]), filmHighlightEV: d(medium["highlight_ev"]),
+                                      sceneDarkestEV: d(low["scene_extreme_ev"]),
+                                      sceneBrightestEV: d(high["scene_extreme_ev"]))
         if let suggested = reply["suggested"] as? [String: Any], (suggested["valid"] as? Bool) == true {
             lines.append(String(format: "Suggested pull-back: highlights %.2f, shadows %.2f stops",
                                 d(suggested["highlight_pull_back"]), d(suggested["shadow_pull_back"])))
+            reading.suggestedHighlight = d(suggested["highlight_pull_back"])
+            reading.suggestedShadow = d(suggested["shadow_pull_back"])
         }
         latitudeLines = lines
+        latitude = reading
     }
 
-    func exportJPEG() async {
+    /// The old name, from when JPEG was the only format.
+    func exportJPEG() async { await export() }
+
+    /// The picture at full resolution in the Export panel's format.
+    func export() async {
         await settle()      // the export renders what the controls say
         guard hasPhoto, busy == nil, let opened, let renderer else { return }
         error = nil
-        let film = settings.filmStock, paper = settings.printStock, quality = exportQuality / 100
-        let uniforms = adjustments.uniforms, box = self.box, device = self.device
-        busy = String(format: "Exporting %.1f MP as an sRGB JPEG…", Double(opened.width * opened.height) / 1e6)
+        let film = settings.filmStock, paper = settings.printStock, options = exportOptions
+        let uniforms = adjustments.uniforms, box = self.box, device = self.device, geometry = self.geometry
+        let out = geometry.outputSize(for: sourceSize)
+        busy = String(format: String(localized: "Exporting %.1f MP as sRGB %@…"),
+                      Double(out.width * out.height) / 1e6, options.summary)
         do {
             let outcome = try await onEngine {
-                try ProbeModel.exportFullJPEG(opened: opened, film: film, paper: paper, quality: quality,
-                                              uniforms: uniforms, box: box, renderer: renderer, device: device)
+                try ProbeModel.exportFull(opened: opened, film: film, paper: paper, options: options,
+                                          uniforms: uniforms, geometry: geometry, box: box,
+                                          renderer: renderer, device: device)
             }
             lastExport = outcome.url
+            lastExportSummary = String(format: String(localized: "%d × %d · %.1f MB · %@"),
+                                       outcome.width, outcome.height,
+                                       Double(outcome.bytes) / 1_000_000, options.summary)
             exportLines = [
-                String(format: "Exported %@: %d × %d, %.1f MB, quality %.0f",
+                String(format: "Exported %@: %d × %d, %.1f MB, %@",
                        outcome.url?.lastPathComponent ?? "?", outcome.width, outcome.height,
-                       Double(outcome.bytes) / 1_000_000, quality * 100),
+                       Double(outcome.bytes) / 1_000_000, options.summary),
                 String(format: "sRGB conversion: %.2f%% of pixels were outside sRGB and rolled into it; %.2f%% at the limits",
                        outcome.outsideFraction * 100, outcome.clippedFraction * 100),
-                String(format: "Time: %.2f s (full render %.2f s, adjustments + sRGB %.2f s, JPEG %.2f s)",
+                String(format: "Time: %.2f s (full render %.2f s, adjustments + sRGB %.2f s, writing the file %.2f s)",
                        outcome.totalSeconds, outcome.renderSeconds, outcome.gpuSeconds, outcome.writeSeconds),
                 "Memory: available before \(Memory.mb(outcome.availableBefore)); peak \(Memory.mb(outcome.peak)); lowest available \(Memory.mb(outcome.minAvailable))",
                 "Saved in Files › On My iPad › \(AppName.current) › Exports",
             ]
         } catch {
-            self.error = "Export failed: \(error)"
+            self.error = String(localized: "Export failed: \(String(describing: error))")
         }
         busy = nil
         saveResults()
@@ -825,7 +1318,7 @@ final class ProbeModel: ObservableObject {
         guard hasPhoto, busy == nil, let opened else { return }
         error = nil
         let film = settings.filmStock, paper = settings.printStock, box = self.box
-        busy = String(format: "Rendering %.1f MP at full resolution…", Double(opened.width * opened.height) / 1e6)
+        busy = String(format: String(localized: "Rendering %.1f MP at full resolution…"), Double(opened.width * opened.height) / 1e6)
         do {
             let outcome = try await onEngine {
                 try ProbeModel.renderFullTier(file: opened.file, width: opened.width, height: opened.height,
@@ -846,7 +1339,7 @@ final class ProbeModel: ObservableObject {
             lines.append("Film / paper: \(StockCatalog.shared.name(film)) / \(StockCatalog.shared.name(paper))")
             fullLines = lines
         } catch {
-            self.error = "Full render could not start: \(error)"
+            self.error = String(localized: "Full render could not start: \(String(describing: error))")
         }
         busy = nil
         saveResults()
@@ -854,6 +1347,9 @@ final class ProbeModel: ObservableObject {
 
     private func show(_ preview: PreviewOutcome) {
         print = preview.print
+        fullPrint = nil
+        previewGeneration += 1
+        scheduleEstimate()
         previewLines = [
             String(format: "Preview (live tier): %d × %d in %.0f ms (engine %.0f ms)",
                    preview.width, preview.height, preview.seconds * 1000, preview.engineMs),
@@ -884,7 +1380,17 @@ final class ProbeModel: ObservableObject {
                        String(format: "Adjustments: temperature %+.0f, tint %+.0f, exposure %+.2f, contrast %+.0f, highlights %+.0f, shadows %+.0f, black %.0f, white %.0f, saturation %+.0f, vibrance %+.0f",
                               a.temperature, a.tint, a.exposure, a.contrast, a.highlights, a.shadows,
                               a.blackPoint, a.whitePoint, a.saturation, a.vibrance)]
+        let g = geometry, wb = camera.applied(asShot: asShot)
+        let out = g.outputSize(for: sourceSize)
+        let frame = [String(format: "Crop: %@, %.0f × %.0f, aspect %@, straighten %.1f°, %d quarter turn(s)%@%@",
+                            g.isIdentity ? "none" : "yes", out.width, out.height, g.aspect.rawValue, g.angle,
+                            g.quarterTurns, g.flipH ? ", flipped across" : "", g.flipV ? ", flipped upright" : ""),
+                     String(format: "Camera: %@ %.0f K, tint %+.0f%@; lens correction %@",
+                            camera.whiteBalance.rawValue, wb.temperature, wb.tint,
+                            asShot.map { String(format: " (as shot %.0f K, %+.0f)", $0.temperature, $0.tint) } ?? "",
+                            !lensCorrectionSupported ? "not in this file" : (camera.lensCorrection ? "on" : "off"))]
         for (title, lines) in [("Device", deviceLines), ("Library", library), ("Photo", photoLines), ("Preview", previewLines),
+                               ("Frame and camera", hasPhoto ? frame + viewerLines : []),
                                ("Scene latitude", latitudeLines + (placementNote.map { ["Placement: " + $0] } ?? [])),
                                ("Export", exportLines),
                                ("Full-resolution render", fullLines)]
@@ -904,6 +1410,222 @@ final class ProbeModel: ObservableObject {
         try? FileManager.default.removeItem(at: documents.appending(path: "SpektraProbe results.txt"))
     }
 
+    // MARK: geometry, viewer and camera decode — the actions
+
+    func rotate(clockwise: Bool) { geometry = geometry.turned(by: clockwise ? 1 : -1) }
+    func flip(horizontal: Bool) {
+        var g = geometry
+        if horizontal { g.flipH.toggle() } else { g.flipV.toggle() }
+        geometry = g
+    }
+    func straighten(to degrees: Double) { geometry = geometry.straightened(to: degrees, in: sourceSize) }
+    /// The Mac's `CropSection.setAspect`: reshaped about its centre, its area
+    /// kept, refitted.
+    func setAspect(_ aspect: CropAspect) {
+        var g = geometry
+        g.aspect = aspect
+        geometry = g.constrained(in: sourceSize)
+    }
+    func resetGeometry() { geometry = Geometry() }
+
+    /// The pair the decode is using now: the camera's own under As Shot.
+    var appliedWhiteBalance: AsShot { camera.applied(asShot: asShot) }
+
+    /// The Mac's `setWhiteBalance`: a preset is its kelvin with no tint.
+    func setWhiteBalance(_ mode: CameraDecode.WhiteBalance) {
+        var c = camera
+        c.whiteBalance = mode
+        if let k = mode.kelvin { c.temperature = k; c.tint = 0 }
+        else if mode == .asShot, let shot = asShot { c.temperature = shot.temperature; c.tint = shot.tint }
+        camera = c
+    }
+
+    /// A slider let go: Custom at that value, the other axis where it was.
+    func setCameraTemperature(_ kelvin: Double) {
+        var c = camera
+        c.tint = appliedWhiteBalance.tint
+        c.temperature = kelvin
+        c.whiteBalance = .custom
+        camera = c
+    }
+
+    func setCameraTint(_ tint: Double) {
+        var c = camera
+        c.temperature = appliedWhiteBalance.temperature
+        c.tint = tint
+        c.whiteBalance = .custom
+        camera = c
+    }
+
+    func setLensCorrection(_ on: Bool) { camera.lensCorrection = on }
+
+    /// The eyedropper: the RAW filter's estimate of the white balance that
+    /// makes the tapped point (0…1 across the canvas's picture) neutral.
+    func pickNeutral(atOutput u: CGPoint) {
+        pickingNeutral = false
+        guard hasPhoto, photoIsRAW, let photo = current else { return }
+        let point = geometry.sourcePoint(forOutput: u, imageSize: sourceSize)
+        let decode = camera
+        Task {
+            let measured = await Task.detached(priority: .userInitiated) {
+                RAWDecode.neutral(at: point, in: photo.url, camera: decode)
+            }.value
+            guard let measured, current == photo else { return }
+            var c = camera
+            c.whiteBalance = .custom
+            c.temperature = measured.temperature.clamped(to: CameraDecode.temperatureRange)
+            c.tint = measured.tint.clamped(to: CameraDecode.tintRange)
+            camera = c
+        }
+    }
+
+    private func cameraDidChange() {
+        guard !applyingState else { return }
+        editHappened()
+        Task { await reopenForCamera() }
+    }
+
+    /// Reads the RAW again with the camera decode the controls say and opens
+    /// the engine on it, keeping every other edit — the Mac's redecode. One at
+    /// a time; a change made meanwhile is read when this one lands. Engine
+    /// pushes wait meanwhile (`rendering`), and go together after.
+    func reopenForCamera() async {
+        guard hasPhoto, let photo = current else { return }
+        if reopening { pendingReopen = true; return }
+        reopening = true
+        while rendering { try? await Task.sleep(for: .milliseconds(30)) }
+        rendering = true
+        let device = self.device, box = self.box, edge = previewEdge
+        repeat {
+            pendingReopen = false
+            let camera = self.camera, settings = self.settings
+            // Checked in the same main-actor turn as the engine call below, so
+            // an open cannot slip in between: while another photo is opening,
+            // this one's reread is dropped (its edit is already saved with it).
+            if camera == appliedCamera || current != photo || opening { break }
+            busy = String(localized: "Developing with the new white balance…")
+            let started = CFAbsoluteTimeGetCurrent()
+            do {
+                let outcome = try await onEngine {
+                    try ProbeModel.openAndPreview(photo.url, settings: settings, camera: camera, edge: edge,
+                                                  device: device, box: box, progress: { _ in })
+                }
+                guard current == photo, !opening else { break }
+                opened = outcome
+                appliedCamera = camera
+                sentWire = outcome.sentWire
+                // Only the film format, which follows the frame's shape; any
+                // other setting edited meanwhile is newer than the reopen's.
+                applyingState = true
+                self.settings.filmFormatMM = outcome.settings.filmFormatMM
+                applyingState = false
+                asShot = outcome.asShot
+                lensCorrectionSupported = outcome.lensCorrectionSupported
+                displayTransform = outcome.display
+                readLatitude(outcome.latitude)
+                before = nil
+                beforeTask?.cancel()
+                beforeTask = nil
+                show(outcome.preview)
+                ensureBefore()
+                viewerLines.append(String(format: "Camera %@ %.0f K, tint %+.0f, lens %@: RAW read again and the engine reopened in %.2f s",
+                                          camera.whiteBalance.rawValue, camera.applied(asShot: asShot).temperature,
+                                          camera.applied(asShot: asShot).tint, camera.lensCorrection ? "on" : "off",
+                                          CFAbsoluteTimeGetCurrent() - started))
+            } catch {
+                self.error = String(localized: "Could not apply the white balance: \(String(describing: error))")
+                break
+            }
+        } while pendingReopen
+        rendering = false
+        reopening = false
+        // An open that started meanwhile owns `busy` and sends its own settings.
+        guard !opening else { return }
+        busy = nil
+        await settingsChanged()
+        saveResults()
+    }
+
+    /// Makes the before picture in the background if it is missing: Apple's
+    /// own development of the RAW, read with the same white balance and lens
+    /// correction as the engine's frame.
+    func ensureBefore() {
+        guard hasPhoto, before == nil, beforeTask == nil, let photo = current else { return }
+        let decode = appliedCamera, edge = previewEdge, device = self.device
+        beforeTask = Task { [weak self] in
+            let made = await Task.detached(priority: .utility) {
+                RAWDecode.beforeTexture(photo.url, camera: decode, longEdge: edge, device: device)
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            self.beforeTask = nil
+            if self.current == photo, self.appliedCamera == decode { self.before = made } else { self.ensureBefore() }
+        }
+    }
+
+    /// The canvas has been zoomed past what the preview holds: render the
+    /// full tier once and keep it while the print stays what it is.
+    func requestFullResolution() {
+        guard hasPhoto, fullPrint == nil, !fullInFlight, busy == nil, !rendering else { return }
+        fullInFlight = true
+        let generation = previewGeneration, box = self.box
+        let started = CFAbsoluteTimeGetCurrent()
+        Task {
+            let rendered = try? await onEngine { () -> Engine.Rendered in
+                guard let engine = box.engine else { throw Engine.Failure(description: "the engine is not running") }
+                return try engine.render(tier: "full")
+            }
+            fullInFlight = false
+            guard let rendered, generation == previewGeneration else { return }
+            fullPrint = rendered.texture
+            viewerLines.append(String(format: "Zoomed canvas: full-resolution print %d × %d in %.2f s",
+                                      rendered.width, rendered.height, CFAbsoluteTimeGetCurrent() - started))
+            if viewerLines.count > 8 { viewerLines.removeFirst(viewerLines.count - 8) }
+        }
+    }
+
+    // MARK: the export's estimated size
+
+    /// After a moment's quiet, while the Export panel is up.
+    private func scheduleEstimate() {
+        guard exportPanelShown, hasPhoto else { return }
+        estimateTask?.cancel()
+        estimateTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            await self?.estimateExportSize()
+        }
+    }
+
+    /// The live print through the export's own chain — Layer 2, sRGB, the
+    /// crop — encoded in the chosen format in memory; its bytes per pixel, times
+    /// the full-resolution output's pixels and the format's measured
+    /// full-resolution factor. Measured (`--selftest-export`): within 3.5 % of
+    /// the written file for every format, on the frame the factors came from
+    /// and on another film with a 1:1 crop.
+    func estimateExportSize() async {
+        guard hasPhoto, let print, let renderer, let opened else { return }
+        let options = exportOptions, uniforms = adjustments.uniforms, geometry = self.geometry
+        let box = self.box, device = self.device, full = geometry.outputSize(for: sourceSize)
+        guard let srgb = try? await onEngine({
+            try ProbeModel.transform(box: box, source: opened.workingSpace, targetName: "sRGB",
+                                     space: CGColorSpace(name: CGColorSpace.sRGB)!, device: device)
+        }) else { return }
+        let bytes = await Task.detached(priority: .utility) { () -> Int? in
+            guard let finished = try? renderer.finish(print: print, uniforms: uniforms, transform: srgb,
+                                                      geometry: geometry),
+                  let image = Renderer.makeCGImage(finished.texture, space: srgb.space),
+                  let encoded = ImageExport.encodedSize(image, options: options) else { return nil }
+            let perPixel = Double(encoded) / Double(image.width * image.height)
+            return Int(perPixel * full.width * full.height * options.format.fullResolutionFactor(bits: options.bits))
+        }.value
+        guard !Task.isCancelled, options == exportOptions else { return }
+        exportEstimateBytes = bytes
+        exportEstimate = bytes.map {
+            let mb = Double($0) / 1_000_000
+            return mb >= 10 ? String(format: "≈ %.0f MB", mb) : String(format: "≈ %.1f MB", mb)
+        }
+    }
+
     // MARK: the engine-queue halves (no main-actor state in here)
 
     nonisolated private static func now() -> Double { CFAbsoluteTimeGetCurrent() }
@@ -920,23 +1642,26 @@ final class ProbeModel: ObservableObject {
         return made
     }
 
-    nonisolated private static func openAndPreview(_ url: URL, settings: FilmSettings, edge: Int,
-                                                   device: MTLDevice, box: EngineBox,
+    nonisolated private static func openAndPreview(_ url: URL, settings: FilmSettings, camera: CameraDecode,
+                                                   edge: Int, device: MTLDevice, box: EngineBox,
                                                    progress: @escaping (String) -> Void) throws -> OpenOutcome {
         guard let engine = box.engine else { throw Engine.Failure(description: "the engine is not running") }
         var outcome = OpenOutcome()
         outcome.file = url.lastPathComponent
         let local = url
-        outcome.sourceEXIF = JPEGExport.sourceEXIF(of: local)
+        outcome.sourceEXIF = ImageExport.sourceEXIF(of: local)
 
-        progress("Decoding the RAW and opening it in the engine…")
+        progress(String(localized: "Decoding the RAW and opening it in the engine…"))
         InFlight.begin(stage: "decoding and opening", details: ["file": outcome.file])
         defer { InFlight.end() }
         let sampler = PeakSampler()
         sampler.start { peak, available in InFlight.update(peak: peak, minAvailable: available) }
         defer { _ = sampler.stop() }
 
-        let decoded = try RAWDecode.decode(local)
+        let decoded = try RAWDecode.decode(local, camera: camera)
+        outcome.camera = camera
+        outcome.asShot = decoded.asShot
+        outcome.lensCorrectionSupported = decoded.lensCorrectionSupported
         outcome.width = decoded.width
         outcome.height = decoded.height
         outcome.isRAW = decoded.isRAW
@@ -985,7 +1710,7 @@ final class ProbeModel: ObservableObject {
         outcome.display = try transform(box: box, source: outcome.workingSpace, targetName: "Display P3",
                                         space: CGColorSpace(name: CGColorSpace.displayP3)!, device: device)
 
-        progress("Rendering the preview…")
+        progress(String(localized: "Rendering the preview…"))
         outcome.preview = try preview(engine: engine)
         outcome.latitude = (try? engine.sceneLatitude([:])) ?? [:]
         return outcome
@@ -1019,8 +1744,8 @@ final class ProbeModel: ObservableObject {
 
     /// The Mac app's export chain at the frame's own size: the engine's full
     /// tier → Layer 2 → the output transform into sRGB → 8 bits → JPEG.
-    nonisolated private static func exportFullJPEG(opened: OpenOutcome, film: String, paper: String,
-                                                   quality: Double, uniforms: Layer2Uniforms,
+    nonisolated private static func exportFull(opened: OpenOutcome, film: String, paper: String,
+                                               options: ExportOptions, uniforms: Layer2Uniforms, geometry: Geometry,
                                                    box: EngineBox, renderer: Renderer,
                                                    device: MTLDevice) throws -> ExportOutcome {
         guard let engine = box.engine else { throw Engine.Failure(description: "the engine is not running") }
@@ -1046,12 +1771,13 @@ final class ProbeModel: ObservableObject {
             do {
                 let full = try engine.render(tier: "full")
                 outcome.renderSeconds = now() - started
-                outcome.width = full.width
-                outcome.height = full.height
-                (converted, stats) = try renderer.finish(print: full.texture, uniforms: uniforms, transform: srgb)
+                (converted, stats) = try renderer.finish(print: full.texture, uniforms: uniforms, transform: srgb,
+                                                         geometry: geometry)
+                outcome.width = converted.width
+                outcome.height = converted.height
             }
             guard let made = Renderer.makeCGImage(converted, space: srgb.space) else {
-                throw JPEGExport.Failure(description: "could not read the converted picture back")
+                throw ImageExport.Failure(description: "could not read the converted picture back")
             }
             image = made
             outcome.outsideFraction = stats.outsideFraction
@@ -1059,8 +1785,8 @@ final class ProbeModel: ObservableObject {
         }
         let convertedAt = now()
         outcome.gpuSeconds = convertedAt - started - outcome.renderSeconds
-        let url = try JPEGExport.freshURL(for: opened.file)
-        try JPEGExport.write(image, to: url, quality: quality, sourceEXIF: opened.sourceEXIF)
+        let url = try ImageExport.freshURL(for: opened.file, format: options.format)
+        try ImageExport.write(image, to: url, options: options, sourceEXIF: opened.sourceEXIF)
         outcome.writeSeconds = now() - convertedAt
         outcome.totalSeconds = now() - started
         (outcome.peak, outcome.minAvailable) = sampler.stop()

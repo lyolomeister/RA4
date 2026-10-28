@@ -168,6 +168,11 @@ struct FilmSettings: Equatable, Codable {
     var printEffects = true
     var effects = EffectStrengths()
     var placement = ScenePlacement()
+    /// Black and white only (`BlackAndWhite.swift`): a colour filter on the
+    /// lens, and the Multigrade grade the print is made at. Kept when a colour
+    /// film is chosen, and sent only while a black-and-white one is.
+    var lensFilter = LensFilter.none
+    var paperGrade = PaperGrades.normal
 
     private var catalog: StockCatalog { .shared }
     var film: Stock? { catalog.stock(filmStock) }
@@ -240,8 +245,15 @@ struct FilmSettings: Equatable, Codable {
     }
 
     /// Multigrade filter 2 as the wire's neutral pack (C, M, Y), from
-    /// `engine/resources_product/paper_grades.json`.
+    /// `engine/resources_product/paper_grades.json` — the Mac's fixed grade,
+    /// and this app's when the bundled table is missing.
     static let multigradeFilter2 = (c: 0.0, m: 0.0, y: 68.0)
+
+    /// The grade's pack and print exposure, when the table is for this paper.
+    var gradeOnPaper: PaperGrades.Grade? {
+        guard let table = PaperGrades.shared, table.paper == printStock else { return nil }
+        return table.grades[paperGrade]
+    }
 
     /// Every field, as the Mac's `FilmParams.wire` sends it for these controls.
     var wire: [String: ParamValue] {
@@ -287,15 +299,20 @@ struct FilmSettings: Equatable, Codable {
             "halation_headroom_ev": .double(effects.highlightHeadroom.clamped(to: EffectStrengths.highlightHeadroomRange)),
             "digital_intermediate": .bool(false),
             "digital_intermediate_blue_compensation": .bool(false),
+            // Always sent, so going back to a colour film takes the filter off.
+            "camera_filter": .string(filmIsMonochrome ? lensFilter.rawValue : ""),
         ]
         if metering != .custom { w["auto_exposure_method"] = .string(metering.rawValue) }
         // Black and white on its paper: the enlarger's pack, because the
-        // engine's table has no row for a silver paper.
+        // engine's table has no row for a silver paper — the grade's, with the
+        // print exposure that holds mid-grey at it (1 at grade 2).
         if filmIsMonochrome && printIsMonochrome {
-            let f = Self.multigradeFilter2
+            let grade = gradeOnPaper
+            let f = grade.map { (c: $0.c, m: $0.m, y: $0.y) } ?? Self.multigradeFilter2
             w["c_filter_neutral"] = .double(f.c)
             w["m_filter_neutral"] = .double(f.m)
             w["y_filter_neutral"] = .double(f.y)
+            w["print_exposure"] = .double(grade?.printExposure ?? 1)
         }
         return w
     }

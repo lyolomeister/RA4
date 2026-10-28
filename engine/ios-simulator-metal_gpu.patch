@@ -1,0 +1,48 @@
+diff --git a/engine/src/gpu/metal_gpu.cpp b/engine/src/gpu/metal_gpu.cpp
+index 48b0e10..2536736 100644
+--- a/engine/src/gpu/metal_gpu.cpp
++++ b/engine/src/gpu/metal_gpu.cpp
+@@ -20,6 +20,13 @@
+ // than a `.mm` (see the file header).
+ #include <dispatch/dispatch.h>
+ 
++#include <TargetConditionals.h>
++#if TARGET_OS_SIMULATOR
++// Only for `texture` below, on the Simulator: tying the result buffer's
++// lifetime to a texture that is no longer laid over it.
++#include <objc/runtime.h>
++#endif
++
+ #include <sys/mman.h>
+ #include <unistd.h>
+ 
+@@ -682,9 +689,29 @@ public:
+         desc->setHeight(height);
+         desc->setUsage(MTL::TextureUsageShaderRead);
+         desc->setStorageMode(MTL::StorageModeShared);
++#if TARGET_OS_SIMULATOR
++        // **The iOS Simulator only.** Its Metal refuses a linear texture over a
++        // shared buffer -- "Linear texture can only be created on buffers with
++        // MTLStorageModePrivate in the simulator", as an assertion that takes
++        // the process -- and the result buffer has to be shared, because
++        // `spk_result.rgba16` points into it. So the texture is an ordinary
++        // shared one with the pixels copied in, and the buffer is tied to it
++        // with an associated object, which keeps the contract above: the
++        // pixels `rgba16` names live exactly as long as the texture. Devices
++        // and Macs never compile this; they keep the zero-copy view.
++        MTL::Texture* tex = device_->newTexture(desc);
++        desc->release();
++        if (!tex) { error = "could not create a texture for the result"; return nullptr; }
++        tex->replaceRegion(MTL::Region(0, 0, width, height), 0, b->mtl->contents(),
++                           size_t(row_stride_px) * 8);
++        static char kKeepsResultBuffer;
++        objc_setAssociatedObject(reinterpret_cast<id>(tex), &kKeepsResultBuffer,
++                                 reinterpret_cast<id>(b->mtl), OBJC_ASSOCIATION_RETAIN);
++#else
+         MTL::Texture* tex = b->mtl->newTexture(desc, 0, size_t(row_stride_px) * 8);
+         desc->release();
+         if (!tex) { error = "could not create a texture over the result buffer"; return nullptr; }
++#endif
+         // `newTexture` is already +1 and the texture retains `b->mtl`, so the
+         // caller now holds the only reference it needs. Not tracked here.
+         return tex;

@@ -94,14 +94,18 @@ struct PickedPhoto: Transferable {
     }
 }
 
-/// One photo's edits: the engine's settings (Layer 1) and the adjustments
-/// (Layer 2). Not the Mac's sidecar format — this build has a subset of it.
+/// One photo's edits: the engine's settings (Layer 1), the adjustments
+/// (Layer 2), the crop and the camera decode. Not the Mac's sidecar format —
+/// this build has a subset of it. Version 2 added `geometry` and `camera`; a
+/// version 1 file reads with no crop and the camera's own white balance.
 struct Sidecar: Codable {
-    var version = 1
+    var version = 2
     var file: String
     var source: Source
     var settings: FilmSettings
     var adjustments: Adjustments
+    var geometry = Geometry()
+    var camera = CameraDecode()
     var savedAt: Date
 
     /// The Mac's `Sidecar.Source`: the photo as the file system knows it. The
@@ -173,9 +177,10 @@ enum SidecarStore {
         return nil
     }
 
-    static func save(settings: FilmSettings, adjustments: Adjustments, for photo: LibraryPhoto) {
+    static func save(settings: FilmSettings, adjustments: Adjustments, geometry: Geometry,
+                     camera: CameraDecode, for photo: LibraryPhoto) {
         let sidecar = Sidecar(file: photo.name, source: .of(photo.url), settings: settings,
-                              adjustments: adjustments, savedAt: Date())
+                              adjustments: adjustments, geometry: geometry, camera: camera, savedAt: Date())
         write(sidecar, to: url(for: photo))
     }
 
@@ -187,7 +192,13 @@ enum SidecarStore {
     /// Whether the photo has edits of its own — the filmstrip's dot.
     static func isEdited(_ photo: LibraryPhoto) -> Bool {
         guard let saved = read(url(for: photo)) else { return false }
-        return saved.settings != FilmSettings() || !saved.adjustments.isNeutral
+        // The film format's length follows the photo's own shape (36.3 mm for
+        // a 3:2.02 M10-R frame), so it is not an edit; the frame, side and
+        // side length that set it are compared.
+        var settings = saved.settings
+        settings.filmFormatMM = FilmSettings().filmFormatMM
+        return settings != FilmSettings() || !saved.adjustments.isNeutral
+            || !saved.geometry.isIdentity || !saved.camera.isNeutral
     }
 
     private static func write(_ sidecar: Sidecar, to url: URL) {
@@ -210,9 +221,19 @@ enum SidecarStore {
         let source = (try? decoder.decode(Sidecar.Source.self,
                                           from: JSONSerialization.data(withJSONObject: stored["source"] ?? [:])))
             ?? Sidecar.Source()
+        // Geometry and camera decode their own missing fields (their
+        // `init(from:)`), so they are read directly rather than merged —
+        // `merged` would drop `intendedSize`, which a default lacks.
+        func direct<T: Decodable>(_ key: String, _ fallback: T) -> T {
+            guard let value = stored[key], let data = try? JSONSerialization.data(withJSONObject: value)
+            else { return fallback }
+            return (try? decoder.decode(T.self, from: data)) ?? fallback
+        }
         return Sidecar(file: file, source: source,
                        settings: merged(FilmSettings(), with: stored["settings"]),
                        adjustments: merged(Adjustments(), with: stored["adjustments"]),
+                       geometry: direct("geometry", Geometry()),
+                       camera: direct("camera", CameraDecode()),
                        savedAt: (stored["savedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? .distantPast)
     }
 

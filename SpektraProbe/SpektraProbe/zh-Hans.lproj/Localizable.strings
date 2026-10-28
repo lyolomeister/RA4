@@ -1,0 +1,308 @@
+/* RA-4 的简体中文界面文字。键就是代码里的英文原文。
+   术语沿用 Mac 版 SpektraLab 的译法（modern_UI/.../Localization/Strings.swift）；
+   胶片、相纸、相机与镜头的名称保持英文，与 Mac 版一致。 */
+
+/* The window */
+"Library" = "图库";
+"From Files…" = "从“文件”导入…";
+"From Photos…" = "从“照片”导入…";
+"Import" = "导入";
+"Undo" = "撤销";
+"Redo" = "重做";
+"Settings" = "设置";
+"Previous" = "上一张";
+"Next" = "下一张";
+"slide, scanned" = "反转片，扫描";
+"negative, scanned" = "负片，扫描";
+"Show the photo alone" = "只显示照片";
+"Dismiss" = "关闭";
+"Spectral darkroom" = "光谱暗房";
+"Import from Photos" = "从“照片”导入";
+"Import from Files" = "从“文件”导入";
+"Photos you put in Files › On My iPad › %@ appear here too." = "放进“文件” › “我的 iPad” › %@ 的照片也会出现在这里。";
+"Done" = "完成";
+"edited" = "已编辑";
+"Reset" = "重置";
+
+/* The tools */
+"Film" = "胶片";
+"Exposure" = "曝光";
+"Effects" = "效果";
+"Print" = "印相";
+"Adjust" = "调整";
+"Export" = "导出";
+"Exposure and placement" = "曝光与场景置位";
+"Format and effects" = "画幅与效果";
+"Paper and print" = "相纸与印相";
+
+/* Film */
+"Film type" = "胶片类型";
+"Negative" = "负片";
+"Positive" = "正片";
+"Black & White" = "黑白";
+"Cine" = "电影";
+"Printed on" = "印相相纸";
+"Change" = "更改";
+"No print (scan the film)" = "不印相（直接扫描胶片）";
+"A slide film has no print stage: it is scanned as it is." = "反转片没有印相环节，按原样扫描。";
+"Scanning the negative itself, orange mask and all." = "直接扫描负片本身，连同橙色片基。";
+
+/* Exposure */
+"Camera" = "相机";
+"As shot" = "拍摄时设置";
+"Metering" = "测光方式";
+"Custom" = "自定义";
+"Balanced" = "均衡";
+"Center" = "中央主体";
+"Protect highlights" = "保护高光";
+"Protect shadows" = "保护阴影";
+"Film exposure" = "胶片曝光";
+"Custom: the meter is off, so Film Exposure starts from the camera's own exposure." = "自定义：测光关闭，胶片曝光从相机自身的曝光开始。";
+"The meter sets the film's exposure; Film Exposure is an offset from it." = "测光决定胶片的曝光；胶片曝光是在其基础上的偏移。";
+"Latitude" = "宽容度";
+"Open a photo to measure how its scene fits the film." = "打开一张照片，即可测量其场景与胶片的匹配程度。";
+"Scene placement" = "场景置位";
+"Suggest" = "建议";
+"Off" = "关闭";
+"off" = "关";
+"Highlights pull-back" = "高光回拉";
+"Shadows pull-back" = "阴影回拉";
+"%.2f stops" = "%.2f 档";
+"Fits a scene wider than the film onto it: the highlights are pulled back, the shadows lifted, before the film sees them. The engine solves each change and refuses one it cannot place." = "把比胶片更宽的场景放进胶片的宽容度：在胶片感光之前回拉高光、提亮阴影。引擎会求解每次更改，无法置位时会拒绝。";
+"Film and paper: %.1f stops" = "胶片与相纸：%.1f 档";
+"Scene: %.1f stops" = "场景：%.1f 档";
+"The whole scene fits on the film." = "整个场景都在胶片的宽容度之内。";
+"Outside the film: %.1f stops in the shadows, %.1f in the highlights." = "超出胶片：阴影 %.1f 档，高光 %.1f 档。";
+"Suggested pull-back: highlights %.2f, shadows %.2f stops." = "建议回拉：高光 %.2f 档，阴影 %.2f 档。";
+"The latitude could not be measured for this film and paper." = "无法测量这组胶片与相纸的宽容度。";
+
+/* Format and effects */
+"Film format" = "胶片画幅";
+"Still" = "静态摄影";
+"Side" = "基准边";
+"Short" = "短边";
+"Long" = "长边";
+"Side length" = "边长";
+"Long edge sent to the engine: %.1f mm. Grain and halation are sized in real micrometres, so a smaller format shows coarser grain. Moving Side length makes the type Custom." = "发送给引擎的长边：%.1f mm。颗粒与光晕按真实的微米尺寸计算，所以画幅越小，颗粒越粗。拖动边长会把画幅改为“自定义”。";
+"Grain" = "颗粒";
+"Strength" = "强度";
+"Grain in three sub-layers" = "分层颗粒（三个子层）";
+"Halation" = "光晕";
+"Scatter" = "散射";
+"Highlight boost" = "高光增强";
+"This film has no anti-halation layer." = "此胶片没有防光晕层。";
+"Remove the anti-halation layer" = "去除防光晕层";
+"Highlight headroom" = "高光余量";
+"Colour couplers" = "DIR 成色剂";
+"Glare" = "耀光";
+"Glare is the print's, and a scanned film has no print." = "耀光属于印相环节，扫描胶片没有印相。";
+"Print effects is off in the Print panel." = "“相纸效果”已在印相面板中关闭。";
+
+/* Paper and print */
+"Paper" = "相纸";
+"The film's own paper" = "胶片预设的相纸";
+"Scanning the negative itself, orange mask and all. Pick a paper to print it." = "直接扫描负片本身，连同橙色片基。选择一种相纸即可印相。";
+"Print effects" = "相纸效果";
+"Glare and pre-flash. Off leaves the paper's colour transformation and nothing else." = "耀光与预曝光。关闭后只保留相纸的色彩转换。";
+"EDR (extended range)" = "扩展动态范围（EDR）";
+"The silver paper has no EDR calibration." = "银盐相纸没有 EDR 校准。";
+"A calibrated per-paper profile with more room in the highlight shoulder and the toe. What you see is what the export carries." = "按相纸校准的配置，在高光肩部与趾部留出更多空间。所见即导出所得。";
+
+/* Adjust */
+"White balance" = "白平衡";
+"Temperature" = "色温";
+"Tint" = "色调";
+"Tone" = "影调";
+"Contrast" = "对比度";
+"Highlights" = "高光";
+"Shadows" = "阴影";
+"Black point" = "黑场";
+"White point" = "白场";
+"Colour" = "色彩";
+"Saturation" = "饱和度";
+"Vibrance" = "自然饱和度";
+"Reset adjustments" = "重置调整";
+"Adjustments work on the finished print and are instant. Double-tap a name to reset it." = "调整作用于印好的照片，即时生效。双击名称可将其重置。";
+
+/* Export */
+"Quality" = "质量";
+"Full resolution in sRGB, with the camera's EXIF and no location." = "全分辨率 sRGB，保留相机 EXIF，不含位置信息。";
+"Export JPEG" = "导出 JPEG";
+"Last export" = "上次导出";
+"Share or save to Photos" = "共享或存储到“照片”";
+"Also saved in Files › On My iPad › %@ › Exports." = "也已存储在“文件” › “我的 iPad” › %@ › Exports。";
+"%d × %d · %.1f MB · quality %.0f" = "%d × %d · %.1f MB · 质量 %.0f";
+
+/* Settings */
+"Version %@" = "版本 %@";
+"Language" = "语言";
+"RA-4 follows your iPad's language: English or Simplified Chinese." = "RA-4 跟随 iPad 的语言：英文或简体中文。";
+"Change the language in Settings" = "在“设置”中更改语言";
+"Credits" = "致谢";
+"A personal, unofficial port of SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA-4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project." = "这是 Hanze Qiu 的 SpektraLab 的个人非官方移植版。SpektraLab 是 Andrea Volpato 的 spektrafilm 的原生 C++ 与 Metal 移植，RA-4 使用其胶片模型、色彩配置与印相 LUT 进行渲染。黑白配置由 Hanze Qiu 制作。本应用与上述两个项目均无关联，也未获其认可。";
+"RA-4 on GitHub" = "GitHub 上的 RA-4";
+"Licences" = "许可证";
+"The app and the engine" = "应用与引擎";
+"Film and paper profiles, print LUTs" = "胶片与相纸配置、印相 LUT";
+"The full licence texts are in the licence folder of the source code." = "完整的许可证文本位于源代码的 license 文件夹中。";
+"Diagnostics" = "诊断";
+"Render full resolution" = "以全分辨率渲染";
+"Full-resolution render" = "全分辨率渲染";
+"Preview" = "预览";
+"Photo" = "照片";
+"Scene latitude" = "场景宽容度";
+"Device" = "设备";
+"Copied" = "已拷贝";
+"Copy all results" = "拷贝全部结果";
+"Timings and memory, for checking the engine. The same text is saved as RA-4 results.txt in the app's folder in Files." = "用于检查引擎的耗时与内存。同样的内容也会存为“文件”中本应用文件夹里的 RA-4 results.txt。";
+
+/* Messages from the app */
+"The canvas shaders did not load." = "画布着色器未能加载。";
+"Starting the engine…" = "正在启动引擎…";
+"The engine did not start: %@" = "引擎未能启动：%@";
+"Opening %@…" = "正在打开 %@…";
+"Could not open %@: %@" = "无法打开 %@：%@";
+"Could not import %@: %@" = "无法导入 %@：%@";
+"Importing 1 photo from Photos…" = "正在从“照片”导入 1 张照片…";
+"Importing %lld photos from Photos…" = "正在从“照片”导入 %lld 张照片…";
+"1 photo could not be imported from Photos." = "有 1 张照片无法从“照片”导入。";
+"%lld photos could not be imported from Photos." = "有 %lld 张照片无法从“照片”导入。";
+"Could not apply the change: %@" = "无法应用此更改：%@";
+"Scene Placement failed: %@" = "场景置位失败：%@";
+"Exporting %.1f MP as an sRGB JPEG…" = "正在把 %.1f MP 导出为 sRGB JPEG…";
+"Export failed: %@" = "导出失败：%@";
+"Rendering %.1f MP at full resolution…" = "正在以全分辨率渲染 %.1f MP…";
+"Full render could not start: %@" = "全分辨率渲染未能开始：%@";
+"Decoding the RAW and opening it in the engine…" = "正在解码 RAW 并在引擎中打开…";
+"Rendering the preview…" = "正在渲染预览…";
+"Pull back further: the scene's brightest part is still past the latitude's edge." = "请再多回拉一些：场景最亮的部分仍超出宽容度边缘。";
+"Pull back further: the scene's darkest part is still past the latitude's edge." = "请再多回拉一些：场景最暗的部分仍超出宽容度边缘。";
+"Pull back a little more: this close to the latitude's edge the highlights would turn too sharply." = "请再稍多回拉一点：离宽容度边缘这么近，高光会转折得过于生硬。";
+"Pull back a little more: this close to the latitude's edge the shadows would turn too sharply." = "请再稍多回拉一点：离宽容度边缘这么近，阴影会转折得过于生硬。";
+"Pull back less: this is further than the curve can reach." = "请少回拉一些：这超出了曲线能达到的范围。";
+"Pull back less: this is past the most the shadows can be lifted." = "请少回拉一些：这超出了阴影最多能提亮的程度。";
+"The highlight and shadow curves would cross: pull back less on one side." = "高光与阴影曲线会交叉：请减少其中一侧的回拉。";
+"Not applied: %@" = "未应用：%@";
+"Not applied." = "未应用。";
+
+/* The canvas and the new tools */
+"Camera and exposure" = "相机与曝光";
+"Before and after" = "效果对比";
+"Crop" = "裁剪";
+
+/* Crop (CropPanel.swift) */
+"Aspect" = "宽高比";
+"Upright" = "竖幅";
+"Across" = "横幅";
+"Free" = "自由";
+"Original" = "原始比例";
+"Straighten" = "拉直";
+"Rotate left" = "向左旋转";
+"Rotate right" = "向右旋转";
+"Flip horizontally" = "水平翻转";
+"Flip vertically" = "垂直翻转";
+"full frame" = "完整画面";
+"Drag the corners or edges to crop, the middle to move it. Straighten turns the photo under a level frame. Choose another tool to see the result; the export follows the crop." = "拖动四角或边缘来裁剪，拖动中间来移动裁剪框。拉直会在水平的取景框下转动照片。切换到其他工具即可看到结果；导出按裁剪进行。";
+
+/* Camera white balance (CameraPanel.swift, CameraDecode.swift) */
+"Camera white balance" = "相机白平衡";
+"Pick a neutral" = "选取中性色";
+"Tap something white or grey" = "轻点白色或灰色的物体";
+"Lens correction" = "镜头校正";
+"White balance and lens correction need a RAW file." = "白平衡与镜头校正需要 RAW 文件。";
+"This RAW carries no lens correction." = "此 RAW 文件不含镜头校正信息。";
+"The white balance the RAW is developed at, before the film sees it — like a filter on the lens. A change develops the photo again. Adjust's temperature and tint grade the finished print." = "RAW 显影时使用的白平衡，作用在胶片感光之前——就像镜头前的滤镜。更改后会重新显影照片。“调整”中的色温与色调用于调整印好的照片。";
+"As Shot" = "拍摄时设置";
+"Daylight" = "日光";
+"Cloudy" = "阴天";
+"Shade" = "阴凉处";
+"Tungsten" = "钨丝灯";
+"Fluorescent" = "荧光灯";
+"Developing with the new white balance…" = "正在以新的白平衡显影…";
+"Could not apply the white balance: %@" = "无法应用白平衡：%@";
+
+/* The enlarger transition (EnlargerTransition.swift) */
+"Canvas" = "画布";
+"Enlarger animation" = "放大机动画";
+"When you choose another film or paper, the photo turns into its negative, then a light sweeps across and the new print develops behind it. It doesn't play when Reduce Motion is on." = "选择其他胶片或相纸时，照片会先变成负片，随后一道光扫过，新的照片在光后显影。开启“减弱动态效果”时不播放。";
+
+/* Black and white: lens filters and paper grades (BlackAndWhite.swift) */
+"None" = "无";
+"Normal" = "标准";
+"Yellow 8" = "黄 8";
+"Yellow-green 11" = "黄绿 11";
+"Deep yellow 12" = "深黄 12";
+"Deep yellow 15" = "深黄 15";
+"Orange 21" = "橙 21";
+"Red 25" = "红 25";
+"Blue 47" = "蓝 47";
+"Green 58" = "绿 58";
+"Every colour turns grey as the film sees it." = "每种颜色都按胶片的感光转为灰色。";
+"Darkens a blue sky a little, so clouds stand out — the classic outdoor filter." = "让蓝天稍暗，云朵更突出——经典的户外滤镜。";
+"Like yellow, and lightens foliage; flatters skin outdoors." = "与黄色相似，并提亮植物；户外人像肤色更好看。";
+"Darkens a blue sky more and cuts haze." = "让蓝天更暗，并减少雾霭。";
+"A dramatic sky, lighter skin and brick, less haze." = "天空富有戏剧性，肤色与砖墙更亮，雾霭更少。";
+"A very dark sky and strong clouds; skin and red lips go pale." = "天空很暗、云层强烈；肤色与红唇会变浅。";
+"Lightens blue and darkens red and green: more haze, a moody look." = "提亮蓝色、压暗红色与绿色：雾霭更多，氛围更阴郁。";
+"Lightens foliage, darkens skin and red." = "提亮植物，压暗肤色与红色。";
+"Lens filter" = "镜头滤镜";
+"A colour filter on a black-and-white camera: colours of its own hue print lighter, the opposite ones darker. Mid-grey keeps its exposure." = "黑白相机上的彩色滤镜：与滤镜同色相的颜色印得更亮，互补色更暗。中灰的曝光保持不变。";
+"Paper grade" = "相纸反差等级";
+"The Multigrade filter on the enlarger: 00 prints the softest, 5 the hardest, 2 is normal. Mid-grey stays where it is." = "放大机上的多级反差滤镜：00 最柔，5 最硬，2 为标准。中灰保持不变。";
+
+/* Photo information (PhotoInfo.swift) */
+"Photo information" = "照片信息";
+"Close" = "关闭";
+"Shot" = "拍摄";
+"File" = "文件";
+"Location" = "位置";
+"Date" = "日期";
+"Lens" = "镜头";
+"Focal length" = "焦距";
+"%@ mm in 35 mm terms" = "等效 35 mm 焦距 %@ mm";
+"Aperture" = "光圈";
+"Shutter" = "快门";
+"Exposure compensation" = "曝光补偿";
+"Mode" = "模式";
+"Flash" = "闪光灯";
+"Fired" = "已闪光";
+"Did not fire" = "未闪光";
+"Camera setting" = "相机设置";
+"Manual" = "手动";
+"Auto" = "自动";
+"%.0f K, tint %+.0f" = "%.0f K，色调 %+.0f";
+"Camera neutral" = "相机中性点";
+"Name" = "名称";
+"Format" = "格式";
+"File size" = "文件大小";
+"Pixels" = "像素";
+"Firmware" = "固件";
+"Author" = "作者";
+"Copyright" = "版权";
+"Coordinates" = "坐标";
+"Altitude" = "海拔";
+"Program" = "程序自动";
+"Aperture priority" = "光圈优先";
+"Shutter priority" = "快门优先";
+"Creative" = "创意";
+"Action" = "运动";
+"Portrait" = "人像";
+"Landscape" = "风景";
+"Average" = "平均测光";
+"Center-weighted" = "中央重点测光";
+"Spot" = "点测光";
+"Multi-spot" = "多点测光";
+"Matrix" = "矩阵测光";
+"Partial" = "局部测光";
+
+/* Export formats (ImageExport.swift); "Format" is above, under photo information */
+"Depth" = "位深";
+"Estimated size" = "预计大小";
+"Export %@" = "导出 %@";
+"JPEG, quality %.0f" = "JPEG，质量 %.0f";
+"Exporting %.1f MP as sRGB %@…" = "正在把 %.1f MP 导出为 sRGB %@…";
+"%d × %d · %.1f MB · %@" = "%d × %d · %.1f MB · %@";
+"Full resolution in sRGB, with the camera's EXIF and no location. Smallest; every app opens it." = "全分辨率 sRGB，保留相机 EXIF，不含位置信息。文件最小，任何应用都能打开。";
+"Full resolution in sRGB, 8 bits, lossless. Larger than a JPEG, no compression artefacts." = "全分辨率 sRGB，8 位，无损。比 JPEG 大，没有压缩瑕疵。";
+"Full resolution in sRGB, 16 bits, lossless (ZIP): the most room for further editing, and the largest file." = "全分辨率 sRGB，16 位，无损（ZIP）：后期调整余地最大，文件也最大。";
+"Full resolution in sRGB, 8 bits, lossless (LZW)." = "全分辨率 sRGB，8 位，无损（LZW）。";
