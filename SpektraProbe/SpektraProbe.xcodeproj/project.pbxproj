@@ -15,6 +15,12 @@
 		CC0000000000000000000006 /* Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000006 /* Memory.swift */; };
 		CC0000000000000000000007 /* Stocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000007 /* Stocks.swift */; };
 		CC000000000000000000000A /* engine in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000A /* engine */; };
+		CC000000000000000000000B /* Adjustments.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000B /* Adjustments.swift */; };
+		CC000000000000000000000C /* ColourTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000C /* ColourTransform.swift */; };
+		CC000000000000000000000D /* Renderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000D /* Renderer.swift */; };
+		CC000000000000000000000E /* CanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000E /* CanvasView.swift */; };
+		CC000000000000000000000F /* JPEGExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000F /* JPEGExport.swift */; };
+		CC0000000000000000000010 /* Canvas.metal in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* Canvas.metal */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +35,12 @@
 		BB0000000000000000000008 /* SpektraProbe-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SpektraProbe-Bridging-Header.h"; sourceTree = "<group>"; };
 		BB0000000000000000000009 /* SpektraProbe.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpektraProbe.entitlements; sourceTree = "<group>"; };
 		BB000000000000000000000A /* engine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = engine; path = Resources/engine; sourceTree = SOURCE_ROOT; };
+		BB000000000000000000000B /* Adjustments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Adjustments.swift; sourceTree = "<group>"; };
+		BB000000000000000000000C /* ColourTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColourTransform.swift; sourceTree = "<group>"; };
+		BB000000000000000000000D /* Renderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Renderer.swift; sourceTree = "<group>"; };
+		BB000000000000000000000E /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
+		BB000000000000000000000F /* JPEGExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JPEGExport.swift; sourceTree = "<group>"; };
+		BB0000000000000000000010 /* Canvas.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Canvas.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +81,12 @@
 				BB0000000000000000000005 /* RAWDecode.swift */,
 				BB0000000000000000000006 /* Memory.swift */,
 				BB0000000000000000000007 /* Stocks.swift */,
+				BB000000000000000000000B /* Adjustments.swift */,
+				BB000000000000000000000C /* ColourTransform.swift */,
+				BB000000000000000000000D /* Renderer.swift */,
+				BB000000000000000000000E /* CanvasView.swift */,
+				BB000000000000000000000F /* JPEGExport.swift */,
+				BB0000000000000000000010 /* Canvas.metal */,
 				BB0000000000000000000008 /* SpektraProbe-Bridging-Header.h */,
 				BB0000000000000000000009 /* SpektraProbe.entitlements */,
 			);
@@ -146,6 +164,12 @@
 				CC0000000000000000000005 /* RAWDecode.swift in Sources */,
 				CC0000000000000000000006 /* Memory.swift in Sources */,
 				CC0000000000000000000007 /* Stocks.swift in Sources */,
+				CC000000000000000000000B /* Adjustments.swift in Sources */,
+				CC000000000000000000000C /* ColourTransform.swift in Sources */,
+				CC000000000000000000000D /* Renderer.swift in Sources */,
+				CC000000000000000000000E /* CanvasView.swift in Sources */,
+				CC000000000000000000000F /* JPEGExport.swift in Sources */,
+				CC0000000000000000000010 /* Canvas.metal in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,6 +226,7 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../engine/include";
 				INFOPLIST_KEY_CFBundleDisplayName = SpektraProbe;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "SpektraProbe saves the JPEGs you export to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -213,6 +238,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/build/ios";
 				MARKETING_VERSION = 0.1;
+				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "-lspektrafilm_engine -lc++ -framework Metal -framework QuartzCore -framework CoreText -framework CoreGraphics -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.alory1995.spektraprobe;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -239,6 +265,7 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../engine/include";
 				INFOPLIST_KEY_CFBundleDisplayName = SpektraProbe;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "SpektraProbe saves the JPEGs you export to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -250,6 +277,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../engine/build/ios";
 				MARKETING_VERSION = 0.1;
+				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "-lspektrafilm_engine -lc++ -framework Metal -framework QuartzCore -framework CoreText -framework CoreGraphics -framework Accelerate";
 				PRODUCT_BUNDLE_IDENTIFIER = com.alory1995.spektraprobe;
 				PRODUCT_NAME = "$(TARGET_NAME)";

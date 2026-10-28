@@ -137,6 +137,28 @@ final class Engine: @unchecked Sendable {
                         rowStridePx: Int(result.row_stride_px), engineMs: result.elapsed_ms)
     }
 
+    /// `spk_output_transform`: the numbers for converting `source` into
+    /// `target` — the adapted matrix, both transfer curves, and the CAM16 setup
+    /// with its C_max table (engine-owned, copied out here).
+    func outputTransform(source: String, target: String,
+                         gamutCompress: String) throws -> (reply: [String: Any], cmax: [Float]) {
+        guard let engine else { throw Failure(description: "the engine is not running") }
+        var out: UnsafeMutablePointer<CChar>?
+        var pointer: UnsafePointer<Float>?
+        var count: UInt32 = 0
+        let status = source.withCString { s in
+            target.withCString { t in
+                gamutCompress.withCString { g in
+                    spk_output_transform(engine, s, t, g, &out, &pointer, &count)
+                }
+            }
+        }
+        guard status == SPK_OK else { throw Failure(description: lastError()) }
+        let parsed = reply(out)
+        guard let pointer, count > 0 else { throw Failure(description: "the engine returned no C_max table") }
+        return (parsed, Array(UnsafeBufferPointer(start: pointer, count: Int(count))))
+    }
+
     /// `spk_memory_report`, parsed: what the engine itself holds.
     func memoryReport() -> [String: Any] {
         guard let engine else { return [:] }
