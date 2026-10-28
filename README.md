@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="SpektraProbe/SpektraProbe/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="180" alt="The RA-4 logo: light from an enlarger falling through a print and spreading into a spectrum">
+  <img src="SpektraProbe/SpektraProbe/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="180" alt="The RA4 Light Lab logo: light from an enlarger falling through a print and spreading into a spectrum">
 </p>
 
-# RA-4 · RA-4光谱暗房 — SpektraLab's film simulation on iPad (a personal port, in progress)
+# RA4 Light Lab · RA4追光暗房 — SpektraLab's film simulation on iPad (a personal port, in progress)
 
 A personal, unofficial port of [SpektraLab](https://github.com/JamesQiu2005/SpektraLab)'s
-spectral film simulation to iPad (and iPhone), as an app called **RA-4**
-(**RA-4光谱暗房** on an iPad set to Chinese) — after the colour print process
-whose paper it simulates. It runs the original's C++/Metal film engine, **unmodified**,
+spectral film simulation to iPad (and iPhone), as an app called **RA4 Light Lab**
+(**RA4追光暗房** on an iPad set to Chinese) — named after RA-4, the colour print
+process whose paper it simulates. It runs the original's C++/Metal film engine, **unmodified**,
 on the iPad's GPU: a RAW goes through a virtual film negative and a print, with
 its grain, halation and paper, in a second or two at full resolution.
 
 > Not affiliated with or endorsed by SpektraLab or spektrafilm. For the
 > finished macOS app, see the [original project](https://github.com/JamesQiu2005/SpektraLab).
-> This branch, `ios-feasibility-probe`, is the iPad work; `main` is an
+> This branch, `ios-port`, is the iPad work; `main` is an
 > untouched copy of the original.
 
 ## Status
@@ -139,10 +139,10 @@ A Leica M10-R DNG, 7840 × 5184 (40.6 MP), Portra 400:
 ### Cameras tested, and the same picture as SpektraLab
 
 Five RAWs at the Mac app's defaults for a new frame (Portra 400 on Supra
-Endura), each exported in full by RA-4 on the iPad and by SpektraLab 1.3.4 on a
+Endura), each exported in full by RA4 on the iPad and by SpektraLab 1.3.4 on a
 Mac, then compared at 1024 px in CIELAB:
 
-| Camera (format) | Size | RA-4 export | ΔE00 to SpektraLab, mean / 95 % |
+| Camera (format) | Size | RA4 export | ΔE00 to SpektraLab, mean / 95 % |
 |---|---|---|---|
 | Canon EOS R5 Mark II (CR3) | 45 MP | 1.9 s | 0.39 / 0.86 |
 | Nikon Z 8 (NEF) | 45 MP | 2.0 s | 0.46 / 1.02 |
@@ -153,7 +153,7 @@ Mac, then compared at 1024 px in CIELAB:
 Every pair has the same pixel size. A ΔE00 under 1 cannot be seen. Two
 SpektraLab runs of one file are identical (0.00), and SpektraLab's own file
 saved as a quality-95 JPEG already differs from itself by 0.34, with the same
-pattern on the difference map: what is left is RA-4's JPEG encoding, not its
+pattern on the difference map: what is left is RA4's JPEG encoding, not its
 rendering.
 
 The app asks for Apple's `increased-memory-limit` entitlement, which a free
@@ -225,7 +225,7 @@ xcrun devicectl device process launch --device <UDID> <bundle id> -- --selftest-
 
 | | |
 |---|---|
-| `SpektraProbe/` | **the RA-4 iPad / iPhone app** (new; the folder, project and bundle identifier keep the working name SpektraProbe) |
+| `SpektraProbe/` | **the RA4 Light Lab iPad / iPhone app** (new; the folder, project and bundle identifier keep the working name SpektraProbe) |
 | `engine/build-ios.sh` | **the engine's iPadOS build** (new) |
 | `engine/` | the original C++20 / Metal render engine — unmodified |
 | `modern_UI/` | the original macOS app — unmodified; the reference this port follows |

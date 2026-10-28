@@ -1401,7 +1401,8 @@ final class ProbeModel: ObservableObject {
     }
 
     /// The same text, after every step, in Documents — visible in Files › On My
-    /// iPad › RA-4, and readable from the Mac with `devicectl`.
+    /// iPad › RA4 Light Lab, and readable from the Mac with `devicectl`. (The
+    /// file keeps the name it had when the app was RA-4.)
     private func saveResults() {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? Data((resultsText() + "\n").utf8)

@@ -1,4 +1,4 @@
-/* RA-4 的简体中文界面文字。键就是代码里的英文原文。
+/* RA4 的简体中文界面文字。键就是代码里的英文原文。
    术语沿用 Mac 版 SpektraLab 的译法（modern_UI/.../Localization/Strings.swift）；
    胶片、相纸、相机与镜头的名称保持英文，与 Mac 版一致。 */
 
@@ -16,7 +16,7 @@
 "negative, scanned" = "负片，扫描";
 "Show the photo alone" = "只显示照片";
 "Dismiss" = "关闭";
-"Spectral darkroom" = "光谱暗房";
+"Light Lab" = "追光暗房";
 "Import from Photos" = "从“照片”导入";
 "Import from Files" = "从“文件”导入";
 "Photos you put in Files › On My iPad › %@ appear here too." = "放进“文件” › “我的 iPad” › %@ 的照片也会出现在这里。";
@@ -136,11 +136,11 @@
 /* Settings */
 "Version %@" = "版本 %@";
 "Language" = "语言";
-"RA-4 follows your iPad's language: English or Simplified Chinese." = "RA-4 跟随 iPad 的语言：英文或简体中文。";
+"RA4 follows your iPad's language: English or Simplified Chinese." = "RA4 跟随 iPad 的语言：英文或简体中文。";
 "Change the language in Settings" = "在“设置”中更改语言";
 "Credits" = "致谢";
-"A personal, unofficial port of SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA-4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project." = "这是 Hanze Qiu 的 SpektraLab 的个人非官方移植版。SpektraLab 是 Andrea Volpato 的 spektrafilm 的原生 C++ 与 Metal 移植，RA-4 使用其胶片模型、色彩配置与印相 LUT 进行渲染。黑白配置由 Hanze Qiu 制作。本应用与上述两个项目均无关联，也未获其认可。";
-"RA-4 on GitHub" = "GitHub 上的 RA-4";
+"A personal, unofficial port of SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project." = "这是 Hanze Qiu 的 SpektraLab 的个人非官方移植版。SpektraLab 是 Andrea Volpato 的 spektrafilm 的原生 C++ 与 Metal 移植，RA4 使用其胶片模型、色彩配置与印相 LUT 进行渲染。黑白配置由 Hanze Qiu 制作。本应用与上述两个项目均无关联，也未获其认可。";
+"RA4 on GitHub" = "GitHub 上的 RA4";
 "Licences" = "许可证";
 "The app and the engine" = "应用与引擎";
 "Film and paper profiles, print LUTs" = "胶片与相纸配置、印相 LUT";

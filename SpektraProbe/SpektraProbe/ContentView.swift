@@ -553,12 +553,14 @@ struct EmptyLibraryView: View {
                     .overlay(RoundedRectangle(cornerRadius: 33, style: .continuous)
                         .stroke(Theme.hairline, lineWidth: 1))
                     .accessibilityHidden(true)
-                Text(verbatim: "RA-4")
+                Text(verbatim: "RA4")
                     .font(.system(size: 44, weight: .heavy))
                     .kerning(1.5)
                     .foregroundStyle(Theme.text)
                     .padding(.top, 6)
-                Text("Spectral darkroom")
+                // The wordmark above and this line read as the app's name:
+                // "RA4" + "Light Lab", or "RA4" + "追光暗房".
+                Text("Light Lab")
                     .font(.title3.weight(.medium))
                     .foregroundStyle(Theme.secondaryText)
             }

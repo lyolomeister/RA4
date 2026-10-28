@@ -97,7 +97,7 @@ enum ImageExport {
     }
 
     /// Where exports go: Documents/Exports, which Files shows under
-    /// On My iPad › RA-4 › Exports.
+    /// On My iPad › RA4 Light Lab › Exports.
     static var folder: URL {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documents.appending(path: "Exports", directoryHint: .isDirectory)

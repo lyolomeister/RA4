@@ -39,7 +39,7 @@ struct SettingsSheet: View {
                 }
 
                 Section {
-                    Text("RA-4 follows your iPad's language: English or Simplified Chinese.")
+                    Text("RA4 follows your iPad's language: English or Simplified Chinese.")
                     Button("Change the language in Settings") {
                         if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
                     }
@@ -56,10 +56,10 @@ struct SettingsSheet: View {
                 }
 
                 Section {
-                    Text("A personal, unofficial port of SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA-4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project.")
+                    Text("A personal, unofficial port of SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project.")
                         .font(.callout)
                     Link(destination: URL(string: "https://github.com/lyolomeister/SpektraLab")!) {
-                        Label("RA-4 on GitHub", systemImage: "arrow.up.right.square")
+                        Label("RA4 on GitHub", systemImage: "arrow.up.right.square")
                     }
                     Link(destination: URL(string: "https://github.com/JamesQiu2005/SpektraLab")!) {
                         Label("SpektraLab", systemImage: "arrow.up.right.square")

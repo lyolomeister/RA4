@@ -40,7 +40,7 @@ struct PhotoInfo: Equatable {
     let sections: [Section]
 
     /// Reads the file's metadata; `asShot` is the decoder's own reading and
-    /// `pixels` the frame's size as RA-4 develops it.
+    /// `pixels` the frame's size as RA4 develops it.
     static func read(url: URL, asShot: AsShot?, pixels: CGSize) -> PhotoInfo {
         let source = CGImageSourceCreateWithURL(url as CFURL, nil)
         let props = source.flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] } ?? [:]
