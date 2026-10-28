@@ -23,6 +23,7 @@
 		CC0000000000000000000010 /* Canvas.metal in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* Canvas.metal */; };
 		CC0000000000000000000012 /* FilmSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000012 /* FilmSettings.swift */; };
 		CC0000000000000000000013 /* StockCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* StockCatalog.json */; };
+		CC0000000000000000000014 /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000014 /* Library.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +46,7 @@
 		BB0000000000000000000010 /* Canvas.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Canvas.metal; sourceTree = "<group>"; };
 		BB0000000000000000000012 /* FilmSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmSettings.swift; sourceTree = "<group>"; };
 		BB0000000000000000000013 /* StockCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = StockCatalog.json; path = ../modern_UI/Spektrafilm/Spektrafilm/Resources/StockCatalog.json; sourceTree = SOURCE_ROOT; };
+		BB0000000000000000000014 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -87,6 +89,7 @@
 				BB0000000000000000000006 /* Memory.swift */,
 				BB0000000000000000000007 /* Stocks.swift */,
 				BB0000000000000000000012 /* FilmSettings.swift */,
+				BB0000000000000000000014 /* Library.swift */,
 				BB000000000000000000000B /* Adjustments.swift */,
 				BB000000000000000000000C /* ColourTransform.swift */,
 				BB000000000000000000000D /* Renderer.swift */,
@@ -172,6 +175,7 @@
 				CC0000000000000000000006 /* Memory.swift in Sources */,
 				CC0000000000000000000007 /* Stocks.swift in Sources */,
 				CC0000000000000000000012 /* FilmSettings.swift in Sources */,
+				CC0000000000000000000014 /* Library.swift in Sources */,
 				CC000000000000000000000B /* Adjustments.swift in Sources */,
 				CC000000000000000000000C /* ColourTransform.swift in Sources */,
 				CC000000000000000000000D /* Renderer.swift in Sources */,

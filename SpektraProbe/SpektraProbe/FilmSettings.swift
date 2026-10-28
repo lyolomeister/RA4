@@ -64,7 +64,7 @@ struct FilmFrame: Identifiable, Hashable {
 }
 
 /// Which side of the photograph the side length measures.
-enum FilmSide: String, CaseIterable, Identifiable {
+enum FilmSide: String, CaseIterable, Identifiable, Codable {
     case short, long
     var id: String { rawValue }
     var title: String { self == .short ? "Short" : "Long" }
@@ -73,7 +73,7 @@ enum FilmSide: String, CaseIterable, Identifiable {
 /// The meter (the Mac's `AEMethod`): Custom is the meter switched off, so
 /// Film Exposure is measured from the linear frame; the other four are the
 /// engine's exposure intents, by their wire names.
-enum Metering: String, CaseIterable, Identifiable {
+enum Metering: String, CaseIterable, Identifiable, Codable {
     case custom
     case balanced
     case center
@@ -94,7 +94,7 @@ enum Metering: String, CaseIterable, Identifiable {
 
 /// Each film effect's strength, as a multiplier on the stock's own (the Mac's
 /// `EffectStrengths`, RFC-025/034). 1 is "this film, as modelled".
-struct EffectStrengths: Equatable {
+struct EffectStrengths: Equatable, Codable {
     var grain = 1.0                // 0…2
     var grainLayered = true
     var halation = 1.0             // 0…4, an area multiplier
@@ -118,7 +118,7 @@ struct EffectStrengths: Equatable {
 /// Scene Placement (RFC-023, the Mac's `SceneLatitudeSettings`): the two
 /// pull-backs are UI state; the curve the engine renders is what its Fit
 /// solved from them, and only a fit the engine accepted is ever stored.
-struct ScenePlacement: Equatable {
+struct ScenePlacement: Equatable, Codable {
     var highlightPullBack = 0.0    // stops, 0…8; 0 = that side off
     var shadowPullBack = 0.0
     var active = false
@@ -148,7 +148,7 @@ struct ScenePlacement: Equatable {
     }
 }
 
-struct FilmSettings: Equatable {
+struct FilmSettings: Equatable, Codable {
     // The Mac's defaults for a new frame (`FilmParams.init`).
     var filmStock = "kodak_portra_400"
     var printStock = "kodak_supra_endura"

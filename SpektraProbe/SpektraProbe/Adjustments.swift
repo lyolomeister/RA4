@@ -12,7 +12,7 @@
 
 import Foundation
 
-struct Adjustments: Equatable {
+struct Adjustments: Equatable, Codable {
     // White balance, post-print: an offset on the scan, not the camera's kelvin.
     var temperature: Double = 0    // −100…100, blue ↔ amber
     var tint: Double = 0           // −100…100, green ↔ magenta

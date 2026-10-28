@@ -2,12 +2,16 @@
 //  paper, camera, the film's effects, its format, Scene Placement, the print,
 //  then the adjustments, export and the diagnostics the probe has always shown.
 
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = ProbeModel()
     @State private var picking = false
+    @State private var pickingPhotos = false
+    @State private var photoItems: [PhotosPickerItem] = []
+    @Environment(\.scenePhase) private var scenePhase
     @State private var open: Set<String> = ["film", "camera", "adjustments", "export"]
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -19,13 +23,13 @@ struct ContentView: View {
             Group {
                 if sizeClass == .compact {
                     VStack(spacing: 0) {
-                        canvas.frame(maxHeight: 360)
+                        VStack(spacing: 0) { canvas; filmstrip }.frame(maxHeight: 460)
                         Divider()
                         panel
                     }
                 } else {
                     HStack(spacing: 0) {
-                        canvas
+                        VStack(spacing: 0) { canvas; filmstrip }
                         Divider()
                         panel.frame(width: 380)
                     }
@@ -34,22 +38,52 @@ struct ContentView: View {
             .navigationTitle("SpektraProbe")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Choose RAW…") { picking = true }
-                        .disabled(model.busy != nil)
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    Menu {
+                        Button("From Files…", systemImage: "folder") { picking = true }
+                        Button("From Photos…", systemImage: "photo.on.rectangle") { pickingPhotos = true }
+                    } label: {
+                        Label("Import", systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(model.busy != nil)
+                    Button("Previous", systemImage: "chevron.left") { Task { await model.previous() } }
+                        .keyboardShortcut(.leftArrow, modifiers: [])
+                        .disabled(!model.hasPrevious || model.busy != nil)
+                    Button("Next", systemImage: "chevron.right") { Task { await model.next() } }
+                        .keyboardShortcut(.rightArrow, modifiers: [])
+                        .disabled(!model.hasNext || model.busy != nil)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Undo", systemImage: "arrow.uturn.backward") { model.undo() }
+                        .keyboardShortcut("z", modifiers: .command)
+                        .disabled(!model.canUndo || model.busy != nil)
+                    Button("Redo", systemImage: "arrow.uturn.forward") { model.redo() }
+                        .keyboardShortcut("z", modifiers: [.command, .shift])
+                        .disabled(!model.canRedo || model.busy != nil)
                     Button("Copy results") { model.copyResults() }
                 }
             }
         }
-        .fileImporter(isPresented: $picking, allowedContentTypes: [.rawImage, .image]) { result in
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.rawImage, .image],
+                      allowsMultipleSelection: true) { result in
             switch result {
-            case .success(let url): Task { await model.load(url) }
+            case .success(let urls): Task { await model.importFiles(urls) }
             case .failure(let error): model.error = error.localizedDescription
             }
         }
-        .onChange(of: model.settings) { _, _ in Task { await model.settingsChanged() } }
+        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, matching: .images,
+                      preferredItemEncoding: .current)
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            Task {
+                await model.importFromPhotos(items)
+                photoItems = []
+            }
+        }
+        // Leaving the screen saves; coming back picks up photos added in Files.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.refreshLibrary() } else { model.appLeavingScreen() }
+        }
     }
 
     // MARK: the picture
@@ -61,12 +95,60 @@ struct ContentView: View {
                 CanvasView(renderer: renderer, print: model.print,
                            uniforms: model.adjustments.uniforms, transform: model.displayTransform)
             }
-            if !model.hasPhoto {
-                Text("Tap Choose RAW… to open a photo from Files.")
+            if !model.hasPhoto && model.busy == nil {
+                Text("Import a photo: Import › From Files or From Photos.\nPhotos added to Files › On My iPad › SpektraProbe appear here too.")
+                    .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.7))
+                    .padding()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: the filmstrip
+
+    /// The library, in name order: each photo as it was last left (the print,
+    /// once opened), a dot on the edited ones, the open one outlined.
+    private var filmstrip: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 8) {
+                    ForEach(model.photos) { photo in
+                        Button { Task { await model.open(photo) } } label: { cell(photo) }
+                            .buttonStyle(.plain)
+                            .disabled(model.busy != nil)
+                            .id(photo.name)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+            }
+            .frame(height: 92)
+            .background(Color(white: 0.1))
+            .onChange(of: model.current) { _, photo in
+                if let photo { withAnimation { proxy.scrollTo(photo.name, anchor: .center) } }
+            }
+        }
+    }
+
+    private func cell(_ photo: LibraryPhoto) -> some View {
+        let isOpen = model.current == photo
+        return ZStack(alignment: .topTrailing) {
+            Group {
+                if let image = model.thumbnails[photo.name] {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Color(white: 0.2)
+                }
+            }
+            .frame(width: 112, height: 74)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            if model.edited.contains(photo.name) {
+                Circle().fill(.orange).frame(width: 8, height: 8).padding(5)
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(isOpen ? Color.accentColor : .clear, lineWidth: 3))
+        .accessibilityLabel(photo.name + (model.edited.contains(photo.name) ? ", edited" : ""))
     }
 
     // MARK: the panel

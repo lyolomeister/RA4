@@ -8,6 +8,7 @@
 //  own output transform.
 
 import Metal
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -143,8 +144,8 @@ struct ExportOutcome {
 final class ProbeModel: ObservableObject {
     /// The engine's settings for the open frame (Layer 1): film and paper,
     /// camera, format, the film's effects, Scene Placement, print. Sent as deltas.
-    @Published var settings = FilmSettings()
-    @Published var adjustments = Adjustments()
+    @Published var settings = FilmSettings() { didSet { settingsDidChange() } }
+    @Published var adjustments = Adjustments() { didSet { editHappened() } }
     /// JPEG quality, 10…100. The Mac app's default is 0.95.
     @Published var exportQuality: Double = 95
     @Published var busy: String?
@@ -173,6 +174,15 @@ final class ProbeModel: ObservableObject {
     @Published var fullLines: [String] = []
     @Published var exportLines: [String] = []
 
+    /// The library (`Library.swift`) and the photo that is open.
+    @Published private(set) var photos: [LibraryPhoto] = []
+    @Published private(set) var current: LibraryPhoto?
+    @Published private(set) var thumbnails: [String: UIImage] = [:]
+    /// Photos with edits of their own — the filmstrip's dot.
+    @Published private(set) var edited: Set<String> = []
+    @Published private(set) var canUndo = false
+    @Published private(set) var canRedo = false
+
     let renderer: Renderer?
     private let queue = DispatchQueue(label: "SpektraProbe.engine", qos: .userInitiated)
     private let device: MTLDevice = MTLCreateSystemDefaultDevice()!
@@ -183,6 +193,27 @@ final class ProbeModel: ObservableObject {
     private var sentWire: [String: ParamValue] = [:]
     /// An edit arrived while a render was running.
     private var pendingPush = false
+
+    /// Undo keeps whole states, one per burst of edits: a slider drag, or a
+    /// run of taps less than 0.7 s apart, is one step.
+    private struct Snapshot: Equatable {
+        var settings: FilmSettings
+        var adjustments: Adjustments
+    }
+    private var undoStack: [Snapshot] = []
+    private var redoStack: [Snapshot] = []
+    /// The state the last burst ended in (or the photo opened in).
+    private var committed: Snapshot?
+    /// The state a burst in progress started from.
+    private var burstBase: Snapshot?
+    private var burstTimer: Task<Void, Never>?
+    private var saveTimer: Task<Void, Never>?
+    private var thumbnailTimer: Task<Void, Never>?
+    /// True while the model itself writes the edits (opening a photo, undo),
+    /// which is not an edit and must not be recorded as one.
+    private var applyingState = false
+    private static let lastPhotoKey = "SpektraProbe.lastPhoto"
+    private var snapshot: Snapshot { Snapshot(settings: settings, adjustments: adjustments) }
 
     /// long ÷ short of the open photograph, for the film format (the Mac's
     /// `physicalAspect`; a crop does not count, which is its default too).
@@ -198,7 +229,8 @@ final class ProbeModel: ObservableObject {
         if renderer == nil { error = "The canvas shaders did not load." }
         Task {
             await startEngine()
-            await runSelfTestIfAsked()
+            refreshLibrary()
+            if await !runSelfTestIfAsked() { await reopenLast() }
         }
     }
 
@@ -210,27 +242,89 @@ final class ProbeModel: ObservableObject {
     ///
     /// `--open <file in Documents>` only opens the file — for showing the app
     /// launched from the Mac (a demo, a screenshot) without anyone tapping.
-    private func runSelfTestIfAsked() async {
+    ///
+    /// `--selftest-library <file>` checks saving, undo and the library;
+    /// `--forget <file>` drops a photo's saved edits and thumbnail.
+    ///
+    /// Returns whether a launch argument decided what opens.
+    private func runSelfTestIfAsked() async -> Bool {
         let arguments = ProcessInfo.processInfo.arguments
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        if let i = arguments.firstIndex(of: "--open"), i + 1 < arguments.count {
-            await load(documents.appending(path: arguments[i + 1]))
-            return
+        func value(_ flag: String) -> String? {
+            guard let i = arguments.firstIndex(of: flag), i + 1 < arguments.count else { return nil }
+            return arguments[i + 1]
         }
-        if let i = arguments.firstIndex(of: "--selftest-film"), i + 1 < arguments.count {
-            await load(documents.appending(path: arguments[i + 1]))
+        if let name = value("--open") {
+            await open(LibraryPhoto(name: name))
+            return true
+        }
+        if let name = value("--forget") {
+            SidecarStore.forget(LibraryPhoto(name: name))
+            UserDefaults.standard.removeObject(forKey: Self.lastPhotoKey)
+            refreshLibrary()
+            exportLines = ["forgot the saved edits and thumbnail of \(name)"]
+            saveResults()
+            return true
+        }
+        if let name = value("--selftest-library") {
+            await runLibrarySelfTest(name)
+            return true
+        }
+        if let name = value("--selftest-film") {
+            await open(LibraryPhoto(name: name))
             if hasPhoto { await runFilmSelfTest() }
-            return
+            return true
         }
-        guard let i = arguments.firstIndex(of: "--selftest"), i + 1 < arguments.count else { return }
-        await load(documents.appending(path: arguments[i + 1]))
-        guard hasPhoto else { return }
+        guard let name = value("--selftest") else { return false }
+        await open(LibraryPhoto(name: name))
+        guard hasPhoto else { return true }
         exportQuality = 95
         await exportJPEG()
         adjustments = Adjustments(temperature: 40, exposure: 0.7, contrast: 20, highlights: -40,
                                   shadows: 30, saturation: -10, vibrance: 60)
         exportQuality = 60
         await exportJPEG()
+        return true
+    }
+
+    /// `--selftest-library`: edits in two bursts, undo and redo, a save, a
+    /// byte-identical copy that must start clean, navigation back with the
+    /// saved edits restored, the copy removed, and a print thumbnail.
+    private func runLibrarySelfTest(_ name: String) async {
+        let original = LibraryPhoto(name: name)
+        var lines = ["library: \(photos.map(\.name))"]
+        await open(original)
+        guard hasPhoto else { return }
+        selectFilm("kodak_ektar_100")
+        settings.exposureCompensationEV = 1
+        adjustments.temperature = 30
+        try? await Task.sleep(for: .seconds(1))
+        adjustments.vibrance = 50
+        try? await Task.sleep(for: .seconds(1))
+        await settle()
+        lines.append("edited: \(settings.filmStock), EV \(settings.exposureCompensationEV), temperature \(adjustments.temperature), vibrance \(adjustments.vibrance); undo steps \(undoStack.count)")
+        undo()
+        await settle()
+        lines.append("after undo: vibrance \(adjustments.vibrance), film \(settings.filmStock)")
+        redo()
+        await settle()
+        lines.append("after redo: vibrance \(adjustments.vibrance)")
+        saveNow()
+        lines.append("sidecar written: \(FileManager.default.fileExists(atPath: SidecarStore.url(for: original).path))")
+        if let copy = try? Library.importCopy(of: original.url) {
+            refreshLibrary()
+            await open(copy)
+            lines.append("copy \(copy.name): film \(settings.filmStock), vibrance \(adjustments.vibrance) (a copy starts clean)")
+            let toOriginal = (photos.firstIndex(of: copy) ?? 0) < (photos.firstIndex(of: original) ?? 0)
+            if toOriginal { await next() } else { await previous() }
+            lines.append("\(toOriginal ? "next()" : "previous()") → \(current?.name ?? "?"): film \(settings.filmStock), EV \(settings.exposureCompensationEV), temperature \(adjustments.temperature), vibrance \(adjustments.vibrance)")
+            try? Library.remove(copy)
+            refreshLibrary()
+            lines.append("copy removed; library: \(photos.map(\.name))")
+        }
+        try? await Task.sleep(for: .seconds(3))
+        lines.append("print thumbnail cached: \(FileManager.default.fileExists(atPath: Thumbnails.url(for: original).path))")
+        exportLines = lines
+        saveResults()
     }
 
     /// `--selftest-film`: one export each of a black-and-white film on its
@@ -306,30 +400,42 @@ final class ProbeModel: ObservableObject {
         saveResults()
     }
 
-    func load(_ url: URL) async {
+    /// Opens a library photo with its saved edits, or the Mac's defaults for a
+    /// new frame. The photo that was open is saved and thumbnailed first.
+    func open(_ photo: LibraryPhoto) async {
         guard busy == nil else { return }
+        leaveCurrentPhoto()
         error = nil
         previewEdge = ProbeModel.screenLongEdgePixels()
-        let settings = self.settings, edge = previewEdge
+        let saved = SidecarStore.load(for: photo)
+        let settings = saved?.settings ?? FilmSettings(), edge = previewEdge
         let device = self.device, box = self.box, progress = progressReporter()
-        busy = "Copying \(url.lastPathComponent) into the app…"
+        busy = "Opening \(photo.name)…"
         do {
             let outcome = try await onEngine {
-                try ProbeModel.openAndPreview(url, settings: settings, edge: edge,
+                try ProbeModel.openAndPreview(photo.url, settings: settings, edge: edge,
                                               device: device, box: box, progress: progress)
             }
             opened = outcome
-            // What was sent first, then the settings, so the change this makes
-            // is already on the engine and sends nothing.
+            current = photo
+            UserDefaults.standard.set(photo.name, forKey: Self.lastPhotoKey)
+            // What was sent first, then the edits, so the change this makes is
+            // already on the engine, and is not an edit.
             sentWire = outcome.sentWire
+            applyingState = true
             self.settings = outcome.settings
+            adjustments = saved?.adjustments ?? Adjustments()
+            applyingState = false
+            committed = snapshot
+            undoStack = []
+            redoStack = []
+            burstBase = nil
+            updateUndoFlags()
             highlightDraft = outcome.settings.placement.highlightPullBack
             shadowDraft = outcome.settings.placement.shadowPullBack
             placementNote = nil
             readLatitude(outcome.latitude)
             hasPhoto = true
-            // Each photo starts as the pure simulation; edits are not stored yet.
-            adjustments = Adjustments()
             fullLines = []
             exportLines = []
             lastExport = nil
@@ -345,12 +451,204 @@ final class ProbeModel: ObservableObject {
                        outcome.viaMetalBuffer ? "one Metal buffer" : "host memory — too big for one Metal buffer"),
                 String(format: "Engine open: %.2f s", outcome.openSeconds),
                 "Peak footprint while decoding + opening: \(Memory.mb(outcome.peakFootprint))",
+                saved.map { "Saved edits: restored (saved \($0.savedAt.formatted(date: .abbreviated, time: .shortened)))" }
+                    ?? "Saved edits: none — the Mac's defaults for a new frame",
             ]
         } catch {
-            self.error = "Could not open \(url.lastPathComponent): \(error)"
+            self.error = "Could not open \(photo.name): \(error)"
         }
         busy = nil
         saveResults()
+    }
+
+    // MARK: edits — undo, saving, thumbnails
+
+    private func settingsDidChange() {
+        guard !applyingState else { return }
+        editHappened()
+        Task { await settingsChanged() }
+    }
+
+    /// Every edit: start or extend the burst it belongs to, and schedule a save.
+    private func editHappened() {
+        guard hasPhoto, !applyingState, let committed else { return }
+        if burstBase == nil { burstBase = committed }
+        burstTimer?.cancel()
+        burstTimer = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard !Task.isCancelled else { return }
+            self?.closeBurst()
+        }
+        updateUndoFlags()
+        scheduleSave()
+    }
+
+    private func closeBurst() {
+        burstTimer?.cancel()
+        burstTimer = nil
+        guard let base = burstBase else { return }
+        burstBase = nil
+        let now = snapshot
+        if now != base {
+            undoStack.append(base)
+            redoStack.removeAll()
+        }
+        committed = now
+        updateUndoFlags()
+    }
+
+    func undo() {
+        closeBurst()
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(snapshot)
+        apply(previous)
+    }
+
+    func redo() {
+        closeBurst()
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(snapshot)
+        apply(next)
+    }
+
+    private func apply(_ state: Snapshot) {
+        applyingState = true
+        settings = state.settings
+        adjustments = state.adjustments
+        applyingState = false
+        committed = state
+        highlightDraft = state.settings.placement.highlightPullBack
+        shadowDraft = state.settings.placement.shadowPullBack
+        updateUndoFlags()
+        scheduleSave()
+        Task { await settingsChanged() }
+    }
+
+    private func updateUndoFlags() {
+        canUndo = !undoStack.isEmpty || (burstBase != nil && burstBase != snapshot)
+        canRedo = !redoStack.isEmpty
+    }
+
+    private func scheduleSave() {
+        saveTimer?.cancel()
+        saveTimer = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            self?.saveNow()
+        }
+    }
+
+    /// Writes the open photo's edits now (Application Support/Sidecars).
+    func saveNow() {
+        saveTimer?.cancel()
+        saveTimer = nil
+        guard let current, hasPhoto else { return }
+        SidecarStore.save(settings: settings, adjustments: adjustments, for: current)
+        if SidecarStore.isEdited(current) { edited.insert(current.name) } else { edited.remove(current.name) }
+        thumbnailTimer?.cancel()
+        thumbnailTimer = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard !Task.isCancelled else { return }
+            self?.captureThumbnail()
+        }
+    }
+
+    /// The filmstrip's picture of the open photo: the live print through its
+    /// adjustments and the display transform, small, cached on disk.
+    func captureThumbnail() {
+        guard hasPhoto, let current, let print, let renderer, let transform = displayTransform else { return }
+        let uniforms = adjustments.uniforms
+        Task.detached(priority: .utility) { [weak self] in
+            guard let finished = try? renderer.finish(print: print, uniforms: uniforms, transform: transform),
+                  let image = Renderer.makeCGImage(finished.texture, space: transform.space),
+                  let small = Thumbnails.downscaled(image) else { return }
+            Thumbnails.store(small, for: current)
+            await self?.setThumbnail(UIImage(cgImage: small), for: current.name)
+        }
+    }
+
+    private func setThumbnail(_ image: UIImage, for name: String) { thumbnails[name] = image }
+
+    /// Before another photo opens, or the app leaves the screen: nothing
+    /// pending is lost and the filmstrip shows the photo as it was left.
+    private func leaveCurrentPhoto() {
+        guard hasPhoto, current != nil else { return }
+        closeBurst()
+        saveNow()
+        thumbnailTimer?.cancel()
+        captureThumbnail()
+    }
+
+    func appLeavingScreen() { leaveCurrentPhoto() }
+
+    // MARK: the library
+
+    func refreshLibrary() {
+        photos = Library.photos()
+        edited = Set(photos.filter(SidecarStore.isEdited).map(\.name))
+        let missing = photos.filter { thumbnails[$0.name] == nil }
+        Task.detached(priority: .utility) { [weak self] in
+            for photo in missing {
+                guard let image = Thumbnails.load(for: photo) else { continue }
+                await self?.setThumbnail(image, for: photo.name)
+            }
+        }
+    }
+
+    private var currentIndex: Int? { current.flatMap { photos.firstIndex(of: $0) } }
+    var hasPrevious: Bool { (currentIndex ?? 0) > 0 }
+    var hasNext: Bool { currentIndex.map { $0 + 1 < photos.count } ?? false }
+
+    func previous() async {
+        guard let i = currentIndex, i > 0 else { return }
+        await open(photos[i - 1])
+    }
+
+    func next() async {
+        guard let i = currentIndex, i + 1 < photos.count else { return }
+        await open(photos[i + 1])
+    }
+
+    /// Files chosen in Files: copied into the library, the first one opened.
+    func importFiles(_ urls: [URL]) async {
+        var first: LibraryPhoto?
+        for url in urls {
+            do {
+                let photo = try Library.importCopy(of: url)
+                first = first ?? photo
+            } catch {
+                self.error = "Could not import \(url.lastPathComponent): \(error.localizedDescription)"
+            }
+        }
+        refreshLibrary()
+        if let first { await open(first) }
+    }
+
+    /// Photos chosen in Photos: their original files (the RAW when there is
+    /// one) copied into the library, the first one opened.
+    func importFromPhotos(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty, busy == nil else { return }
+        busy = "Importing \(items.count) photo\(items.count == 1 ? "" : "s") from Photos…"
+        var first: LibraryPhoto?
+        var failed = 0
+        for item in items {
+            if let picked = try? await item.loadTransferable(type: PickedPhoto.self) {
+                first = first ?? picked.photo
+            } else {
+                failed += 1
+            }
+        }
+        busy = nil
+        if failed > 0 { error = "\(failed) photo\(failed == 1 ? "" : "s") could not be imported from Photos." }
+        refreshLibrary()
+        if let first { await open(first) }
+    }
+
+    /// At launch: the photo that was open last, else the library's first.
+    private func reopenLast() async {
+        let last = UserDefaults.standard.string(forKey: Self.lastPhotoKey)
+        guard let photo = photos.first(where: { $0.name == last }) ?? photos.first else { return }
+        await open(photo)
     }
 
     /// A settings edit: send what changed, render the preview, and measure the
@@ -579,7 +877,14 @@ final class ProbeModel: ObservableObject {
         var text = ["SpektraProbe results"]
         if let crashNote { text += ["", "PREVIOUS RUN:", crashNote] }
         if let error { text += ["", "ERROR: \(error)"] }
-        for (title, lines) in [("Device", deviceLines), ("Photo", photoLines), ("Preview", previewLines),
+        let a = adjustments
+        let library = ["\(photos.count) photo(s): " + photos.map { $0.name + (edited.contains($0.name) ? " (edited)" : "") }
+                           .joined(separator: ", "),
+                       "Open: \(current?.name ?? "none"); undo steps \(undoStack.count), redo \(redoStack.count)",
+                       String(format: "Adjustments: temperature %+.0f, tint %+.0f, exposure %+.2f, contrast %+.0f, highlights %+.0f, shadows %+.0f, black %.0f, white %.0f, saturation %+.0f, vibrance %+.0f",
+                              a.temperature, a.tint, a.exposure, a.contrast, a.highlights, a.shadows,
+                              a.blackPoint, a.whitePoint, a.saturation, a.vibrance)]
+        for (title, lines) in [("Device", deviceLines), ("Library", library), ("Photo", photoLines), ("Preview", previewLines),
                                ("Scene latitude", latitudeLines + (placementNote.map { ["Placement: " + $0] } ?? [])),
                                ("Export", exportLines),
                                ("Full-resolution render", fullLines)]
@@ -619,7 +924,7 @@ final class ProbeModel: ObservableObject {
         guard let engine = box.engine else { throw Engine.Failure(description: "the engine is not running") }
         var outcome = OpenOutcome()
         outcome.file = url.lastPathComponent
-        let local = try copyIn(url)
+        let local = url
         outcome.sourceEXIF = JPEGExport.sourceEXIF(of: local)
 
         progress("Decoding the RAW and opening it in the engine…")
@@ -794,24 +1099,6 @@ final class ProbeModel: ObservableObject {
         outcome.footprintAfter = Memory.footprint()
         outcome.lifetimePeak = Memory.lifetimePeak()
         return outcome
-    }
-
-    /// A private copy, so Core Image reads a local file and not a security-scoped
-    /// one that may live in iCloud or on a USB drive.
-    nonisolated private static func copyIn(_ url: URL) throws -> URL {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let dir = FileManager.default.temporaryDirectory.appending(path: "picked", directoryHint: .isDirectory)
-        try? FileManager.default.removeItem(at: dir)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let destination = dir.appending(path: url.lastPathComponent)
-        var coordinationError: NSError?
-        var copyError: Error?
-        NSFileCoordinator().coordinate(readingItemAt: url, options: [.withoutChanges], error: &coordinationError) { readable in
-            do { try FileManager.default.copyItem(at: readable, to: destination) } catch { copyError = error }
-        }
-        if let failure = coordinationError ?? copyError { throw failure }
-        return destination
     }
 
     // MARK: describing the device
