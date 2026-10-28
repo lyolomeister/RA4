@@ -8,7 +8,7 @@ binary that ships without them is not licensed to be shipped.
   GPL-3.0.txt
       The app and the C++ render engine, GPL-3.0-or-later. You have the right
       to the corresponding source code of this app:
-      https://github.com/lyolomeister/SpektraLab
+      https://github.com/lyolomeister/RA4
       The engine comes from SpektraLab by Hanze Qiu:
       https://github.com/JamesQiu2005/SpektraLab
 
