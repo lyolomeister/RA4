@@ -35,10 +35,6 @@ enum RAWDecode {
                             gamma: gamma, matrix: primaries)!
     }()
 
-    /// The engine's output space: ROMM RGB, gamma 1.8 (ARCHITECTURE §7.5 row 5).
-    static let workingSpace = CGColorSpace(name: CGColorSpace.rommrgb)!
-    static let displayP3 = CGColorSpace(name: CGColorSpace.displayP3)!
-
     static let context: CIContext = CIContext(mtlDevice: MTLCreateSystemDefaultDevice()!, options: [
         .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)!,
         .workingFormat: CIFormat.RGBAh,
@@ -83,25 +79,6 @@ enum RAWDecode {
             context.render(decoded.image, toBitmap: pointer, rowBytes: decoded.width * 16,
                            bounds: CGRect(x: 0, y: 0, width: decoded.width, height: decoded.height),
                            format: .RGBAf, colorSpace: linearProPhoto)
-        }
-    }
-
-    /// The engine's RGBA16 result, downscaled to `maxEdge` and converted from
-    /// the working space to Display P3 for the screen.
-    static func displayImage(_ rendered: Engine.Rendered, maxEdge: Int) -> CGImage? {
-        let rowBytes = rendered.rowStridePx * 8
-        let data = Data(bytesNoCopy: UnsafeMutableRawPointer(mutating: rendered.rgba16),
-                        count: rowBytes * rendered.height, deallocator: .none)
-        let size = CGSize(width: rendered.width, height: rendered.height)
-        var image = CIImage(bitmapData: data, bytesPerRow: rowBytes, size: size,
-                            format: .RGBA16, colorSpace: workingSpace)
-        let scale = min(1.0, Double(maxEdge) / Double(max(rendered.width, rendered.height)))
-        if scale < 1 {
-            image = image.applyingFilter("CILanczosScaleTransform",
-                                         parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1.0])
-        }
-        return autoreleasepool {
-            context.createCGImage(image, from: image.extent.integral, format: .RGBA8, colorSpace: displayP3)
         }
     }
 }
