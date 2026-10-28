@@ -188,7 +188,15 @@ struct FilmSettings: Equatable, Codable {
     /// The Mac's `selectFilmStock`: a film brings its declared paper unless
     /// the current one already is it; colour and black and white cannot share
     /// a paper; a slide film has no print stage, so it is scanned.
+    ///
+    /// **One rule differs from the Mac**, by the user's choice: leaving a
+    /// slide film for a negative prints again, on the negative's own paper.
+    /// The Mac keeps the slide's scan until a paper is chosen, so the negative
+    /// showed as a negative — orange and inverted — which nobody wants after a
+    /// slide. A negative scanned by choice ("No print") stays scanned when
+    /// another negative is chosen; only the scan a slide forced is undone.
     mutating func selectFilm(_ id: String) {
+        let leavingSlide = filmIsPositive
         filmStock = id
         if let target = catalog.stock(id)?.targetPrint, catalog.stock(target) != nil,
            !catalog.isDeclaredPairing(film: id, paper: printStock) {
@@ -197,7 +205,13 @@ struct FilmSettings: Equatable, Codable {
         if !catalog.canPrint(film: id, on: printStock) {
             printStock = catalog.stock(id)?.targetPrint ?? FilmSettings().printStock
         }
-        if filmIsPositive { scanFilm = true }
+        if filmIsPositive {
+            scanFilm = true
+        } else if leavingSlide {
+            // The paper is already the negative's own (the declared-paper rule
+            // above); only the scan the slide forced has to go.
+            scanFilm = false
+        }
     }
 
     /// The Mac's `selectPrintStock`: a slide film keeps its scan; a paper that

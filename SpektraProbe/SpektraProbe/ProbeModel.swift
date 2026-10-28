@@ -390,6 +390,11 @@ final class ProbeModel: ObservableObject {
             if hasPhoto { await runGeometrySelfTest() }
             return true
         }
+        if let name = value("--selftest-stocks") {
+            await open(LibraryPhoto(name: name))
+            if hasPhoto { await runStocksSelfTest() }
+            return true
+        }
         if arguments.contains("--selftest-raws") {
             await runRAWsSelfTest()
             return true
@@ -701,6 +706,42 @@ final class ProbeModel: ObservableObject {
         exportOptions = original
         lastExport = nil
         lastExportSummary = nil
+        exportLines = lines
+        saveResults()
+    }
+
+    /// `--selftest-stocks`: what choosing a film does to the print. A slide
+    /// then a negative must print again, on the negative's own paper; a
+    /// negative scanned by choice stays scanned on the next negative; a slide
+    /// then a black-and-white negative prints on the silver paper. Each step
+    /// is rendered, and the photo's settings are put back.
+    private func runStocksSelfTest() async {
+        var lines: [String] = []
+        let original = settings
+        func state(_ step: String, expect: String? = nil) async {
+            await settle()
+            let s = settings
+            let now = s.scanFilm ? "scanned, no print" : "printed on \(StockCatalog.shared.name(s.printStock))"
+            var line = "\(step): \(StockCatalog.shared.name(s.filmStock)) \(now)"
+            if let expect { line += now.contains(expect) ? "  ✓" : "  ✗ expected \(expect)" }
+            lines.append(line + (error.map { " — ERROR \($0)" } ?? ""))
+        }
+        await state("start")
+        selectFilm("fujifilm_velvia_100")
+        await state("slide", expect: "scanned")
+        selectFilm("kodak_portra_400")
+        await state("slide → negative", expect: "printed on \(StockCatalog.shared.name(StockCatalog.shared.stock("kodak_portra_400")?.targetPrint ?? ""))")
+        selectNoPrint()
+        await state("No print, by choice", expect: "scanned")
+        selectFilm("kodak_ektar_100")
+        await state("chosen scan → another negative", expect: "scanned")
+        selectFilm("fujifilm_velvia_100")
+        selectFilm("kodak_tri_x_400")
+        await state("slide → black-and-white negative", expect: "printed on \(StockCatalog.shared.name("ilford_multigrade_iv_rc"))")
+        settings = original
+        await settle()
+        saveNow()
+        lines.append("put back: \(settings == original)")
         exportLines = lines
         saveResults()
     }

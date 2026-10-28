@@ -90,6 +90,9 @@ resolution.
   where the RAW carries one. A change develops the photo again (about 1 s).
 - **34 stocks** from the Mac app's own catalogue: colour negatives, slide films
   (scanned, no paper) and black-and-white films (printed on Ilford Multigrade).
+  Going from a slide film back to a negative prints again on the negative's
+  own paper (the Mac keeps the slide's scan until a paper is chosen); a
+  negative you set to "No print" yourself stays scanned.
 - **Black and white**, ahead of the Mac app (whose engine has both and whose
   interface does not yet): a **colour filter on the lens** — Kodak Wratten
   yellow 8, yellow-green 11, deep yellow 12 and 15, orange 21, red 25, blue 47,
@@ -213,6 +216,7 @@ takes launch arguments that run without anyone tapping:
 | `--selftest-info <file>` | the photo information card's rows, written to the results file |
 | `--selftest-export <file>` | every export format on two pictures: the estimate, the real file's size and what the file says it is, then the files deleted |
 | `--export-format jpeg\|png\|tiff8\|tiff16` | sets the Export panel's format (saved, like a tap), for screenshots |
+| `--selftest-stocks <file>` | what choosing a film does to the print: slide → negative, a chosen scan → another negative, slide → black and white |
 | `--selftest-raws` | every unedited library photo at the Mac's defaults (lens correction off): what the decode says, the timings, a full JPEG at quality 95, a check that each file is its own photo's frame, and a race check (a camera change on one photo, the next opened at once) |
 | `--selftest-bw <file>` | Tri-X on Multigrade with each kind of lens filter and grades 00 and 5: the print's tones each time, three exports, then put back |
 | `--selftest-geometry <file>` | crop, straighten, turn and flip, a Tungsten white balance, the eyedropper, the lens switch, the full-resolution canvas print — each exported or timed, then put back |
