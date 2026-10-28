@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="SpektraProbe/SpektraProbe/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="180" alt="The RA-4 logo: light from an enlarger falling through a print and spreading into a spectrum">
+</p>
+
 # RA-4 · RA-4光谱暗房 — SpektraLab's film simulation on iPad (a personal port, in progress)
 
 A personal, unofficial port of [SpektraLab](https://github.com/JamesQiu2005/SpektraLab)'s
