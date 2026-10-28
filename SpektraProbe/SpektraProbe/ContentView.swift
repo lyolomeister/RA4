@@ -17,6 +17,8 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var model = ProbeModel()
+    /// Film and paper names as the person has renamed them (the top bar's line).
+    @ObservedObject private var names = StockNames.shared
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
@@ -74,9 +76,13 @@ struct ContentView: View {
             LibraryGrid(model: model) { librarySheetShown = false }
                 .presentationDetents([.medium, .large])
         }
-        // Leaving the screen saves; coming back picks up photos added in Files.
+        // The model decides what each step means (`sceneChanged`): going
+        // inactive saves the edits and the thumbnail; the background drops
+        // the zoomed full-resolution print and notes any engine work iOS cut
+        // off (no GPU there); coming back refreshes the library and develops
+        // the photo again if its work was cut off.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.refreshLibrary() } else { model.appLeavingScreen() }
+            model.sceneChanged(to: phase)
         }
         .task { await demoEnlargerIfAsked() }
         // `--show-settings`, passed only from the Mac, so the sheet can be
@@ -246,7 +252,9 @@ struct ContentView: View {
                       active: model.showingInfo) {
                 model.showingInfo.toggle()
             }
-            .keyboardShortcut("i", modifiers: [])
+            // ⌘I, not a bare I: a film can be renamed in a text field now,
+            // and a bare letter there must type, not open the card.
+            .keyboardShortcut("i", modifiers: .command)
             .disabled(!model.hasPhoto)
             BarButton("Before and after", symbol: "square.split.2x1",
                       active: model.compare != .off) {
@@ -310,11 +318,11 @@ struct ContentView: View {
 
     /// "Portra 400 → Supra Endura": the film, and the paper it is printed on.
     private var processLine: String {
-        let s = model.settings, catalog = StockCatalog.shared
-        let film = Stocks.shortName(catalog.name(s.filmStock))
-        if s.filmIsPositive { return film + " · " + String(localized: "slide, scanned") }
+        let s = model.settings
+        let film = names.label(s.filmStock).name
+        if s.filmIsPositive { return film + " · " + String(localized: "reversal, scanned") }
         if s.scanFilm { return film + " · " + String(localized: "negative, scanned") }
-        return film + " → " + Stocks.shortName(catalog.name(s.printStock))
+        return film + " → " + names.label(s.printStock).name
     }
 
     // MARK: the strip

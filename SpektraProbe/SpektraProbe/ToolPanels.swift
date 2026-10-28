@@ -105,25 +105,11 @@ struct ToolPanel: View {
 
 // MARK: - Film
 
-/// Film names as their box says them: maker, the film, its speed.
+/// The catalogue maker of a film, and the colour of its boxes. (What a tile
+/// shows as brand, name and speed is `StockNames`', which follows renames.)
 enum Stocks {
     static func maker(_ name: String) -> String {
         String(name.split(separator: " ").first ?? "")
-    }
-
-    /// "Kodak Portra 400" → "Portra 400"; "Kodak Professional Supra Endura" →
-    /// "Supra Endura".
-    static func shortName(_ name: String) -> String {
-        var words = name.split(separator: " ").map(String.init)
-        if words.count > 1 { words.removeFirst() }
-        if words.count > 1 && words.first == "Professional" { words.removeFirst() }
-        return words.joined(separator: " ")
-    }
-
-    /// The speed in the name: the last run of two to four digits, so "Vision3
-    /// 500T" is 500 and "Portra 800 (Push 1)" is 800.
-    static func speed(_ name: String) -> String? {
-        name.matches(of: #/\d{2,4}/#).last.map { String($0.output) }
     }
 
     /// The colour of the maker's boxes, as a band down the tile's edge.
@@ -142,6 +128,7 @@ struct FilmPanel: View {
     @ObservedObject var model: ProbeModel
     let open: (Tool) -> Void
     @State private var group = "Negative"
+    @ObservedObject private var names = StockNames.shared
 
     private var catalog: StockCatalog { .shared }
 
@@ -172,7 +159,7 @@ struct FilmPanel: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.text)
                     if s.filmIsPositive {
-                        Caption("A slide film has no print stage: it is scanned as it is.")
+                        Caption("A reversal film has no print stage: it is scanned as it is.")
                     } else if s.scanFilm {
                         Caption("Scanning the negative itself, orange mask and all.")
                     }
@@ -195,23 +182,28 @@ struct FilmPanel: View {
 
     private func paperName(_ s: FilmSettings) -> String {
         if s.filmIsPositive || s.scanFilm { return String(localized: "No print (scan the film)") }
-        return catalog.name(s.printStock)
+        return names.label(s.printStock).full
     }
 }
 
 /// A film as a tile: the maker's colour down the edge, the film's name, its
-/// speed large.
+/// speed large. Hold it to rename it (`StockNames`): the brand and name are
+/// then the person's own, the speed stays the catalogue's, and the band goes
+/// neutral, since a box colour belongs to the maker whose name was removed.
 struct FilmTile: View {
     let stock: Stock
     let selected: Bool
     let action: () -> Void
+    @ObservedObject private var names = StockNames.shared
 
     var body: some View {
-        let maker = Stocks.maker(stock.name)
+        let label = names.label(stock)
+        let catalogueMaker = Stocks.maker(stock.name)
+        let band = label.brand == catalogueMaker ? Stocks.colour(catalogueMaker) : Theme.tertiaryText
         Button(action: action) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
-                    Text(verbatim: maker)
+                    Text(verbatim: label.brand)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Theme.secondaryText)
                     Spacer(minLength: 0)
@@ -224,7 +216,7 @@ struct FilmTile: View {
                             .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.tertiaryText, lineWidth: 1))
                     }
                 }
-                Text(verbatim: Stocks.shortName(stock.name))
+                Text(verbatim: label.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Theme.text)
                     .lineLimit(2)
@@ -232,7 +224,7 @@ struct FilmTile: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 HStack(alignment: .lastTextBaseline, spacing: 3) {
-                    if let speed = Stocks.speed(stock.name) {
+                    if let speed = StockNames.speed(of: stock) {
                         Text(verbatim: speed)
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .monospacedDigit()
@@ -251,7 +243,7 @@ struct FilmTile: View {
             .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
             .background(selected ? Theme.wellPressed : Theme.well)
             .overlay(alignment: .leading) {
-                Stocks.colour(maker).frame(width: 5)
+                band.frame(width: 5)
             }
             .clipShape(RoundedRectangle(cornerRadius: Theme.corner))
             .overlay(RoundedRectangle(cornerRadius: Theme.corner)
@@ -259,8 +251,9 @@ struct FilmTile: View {
             .contentShape(RoundedRectangle(cornerRadius: Theme.corner))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: stock.name))
+        .accessibilityLabel(Text(verbatim: label.full))
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .stockRenaming(stock)
     }
 }
 
@@ -507,6 +500,7 @@ struct EffectsPanel: View {
 
 struct PrintPanel: View {
     @ObservedObject var model: ProbeModel
+    @ObservedObject private var names = StockNames.shared
 
     private var catalog: StockCatalog { .shared }
 
@@ -514,7 +508,7 @@ struct PrintPanel: View {
         let s = model.settings
         PanelSection("Paper") {
             if s.filmIsPositive {
-                Caption("A slide film has no print stage: it is scanned as it is.")
+                Caption("A reversal film has no print stage: it is scanned as it is.")
             }
             VStack(spacing: 0) {
                 PaperRow(name: Text("No print (scan the film)"), detail: nil,
@@ -531,12 +525,13 @@ struct PrintPanel: View {
                     .padding(.top, 14)
                     .padding(.bottom, 4)
                     ForEach(group.stocks) { paper in
-                        PaperRow(name: Text(verbatim: Stocks.shortName(paper.name)),
+                        PaperRow(name: Text(verbatim: names.label(paper).name),
                                  detail: catalog.isDeclaredPairing(film: s.filmStock, paper: paper.id)
                                     ? Text("The film's own paper") : nil,
                                  selected: !s.scanFilm && !s.filmIsPositive && s.printStock == paper.id) {
                             model.selectPaper(paper.id)
                         }
+                        .stockRenaming(paper)
                     }
                 }
             }

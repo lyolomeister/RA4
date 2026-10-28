@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		CC00000000000000000000A7 /* PhotoInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A7 /* PhotoInfo.swift */; };
+		CC00000000000000000000A8 /* Licences.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A8 /* Licences.swift */; };
+		CC00000000000000000000A9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A9 /* PrivacyInfo.xcprivacy */; };
 		CC00000000000000000000A6 /* BlackAndWhite.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A6 /* BlackAndWhite.swift */; };
 		CC00000000000000000000A5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A5 /* Assets.xcassets */; };
 		CC00000000000000000000A1 /* Geometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB00000000000000000000A1 /* Geometry.swift */; };
@@ -41,6 +43,8 @@
 
 /* Begin PBXFileReference section */
 		BB00000000000000000000A7 /* PhotoInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInfo.swift; sourceTree = "<group>"; };
+		BB00000000000000000000A8 /* Licences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Licences.swift; sourceTree = "<group>"; };
+		BB00000000000000000000A9 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BB00000000000000000000A6 /* BlackAndWhite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlackAndWhite.swift; sourceTree = "<group>"; };
 		BB00000000000000000000A5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BB00000000000000000000A1 /* Geometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geometry.swift; sourceTree = "<group>"; };
@@ -121,6 +125,7 @@
 				BB00000000000000000000A4 /* CameraPanel.swift */,
 				BB00000000000000000000A6 /* BlackAndWhite.swift */,
 				BB00000000000000000000A7 /* PhotoInfo.swift */,
+				BB00000000000000000000A8 /* Licences.swift */,
 				BB0000000000000000000019 /* LibraryView.swift */,
 				BB0000000000000000000018 /* Theme.swift */,
 				BB0000000000000000000003 /* ProbeModel.swift */,
@@ -132,6 +137,7 @@
 				BB0000000000000000000014 /* Library.swift */,
 				BB0000000000000000000015 /* InfoPlist.strings */,
 				BB00000000000000000000A5 /* Assets.xcassets */,
+				BB00000000000000000000A9 /* PrivacyInfo.xcprivacy */,
 				BB000000000000000000001C /* Localizable.strings */,
 				BB000000000000000000000B /* Adjustments.swift */,
 				BB000000000000000000000C /* ColourTransform.swift */,
@@ -203,6 +209,7 @@
 				CC0000000000000000000013 /* StockCatalog.json in Resources */,
 				CC0000000000000000000015 /* InfoPlist.strings in Resources */,
 				CC00000000000000000000A5 /* Assets.xcassets in Resources */,
+				CC00000000000000000000A9 /* PrivacyInfo.xcprivacy in Resources */,
 				CC000000000000000000001A /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -222,7 +229,7 @@
 				"$(SRCROOT)/Resources/engine",
 				"$(SRCROOT)/../engine/build/$(SPK_ENGINE_DIR)/spektrafilm.metallib",
 			);
-			name = "Copy the engine's resources and kernels";
+			name = "Copy the engine's resources and kernels, and the licences";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -230,7 +237,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# The engine's resources and its kernels, in ONE step, so nothing else ever\n# writes SpektraProbe.app/engine. They used to be two -- a folder-reference copy\n# of Resources/engine in the Resources phase, and this phase adding the metallib\n# -- and Xcode may run those side by side: when the folder copy landed last it\n# replaced the folder and the metallib was gone (\"the engine is not running\").\n# The kernels differ per platform (engine/build-ios.sh: device build/ios,\n# Simulator build/ios-sim), so they are never in Resources/engine.\nsrc=\"${SRCROOT}/Resources/engine\"\nlib=\"${SRCROOT}/../engine/build/${SPK_ENGINE_DIR}/spektrafilm.metallib\"\ndst=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/engine\"\nif [ ! -f \"$src/spektrafilm_constants.bin\" ]; then\n  echo \"error: $src is missing. Run engine/build-ios.sh bundle.\"\n  exit 1\nfi\nif [ ! -f \"$lib\" ]; then\n  echo \"error: $lib is missing. Run engine/build-ios.sh (device) or engine/build-ios.sh sim (Simulator).\"\n  exit 1\nfi\nmkdir -p \"$dst\"\nrsync -a --delete --exclude spektrafilm.metallib \"$src/\" \"$dst/\"\ncp \"$lib\" \"$dst/spektrafilm.metallib\"\n";
+			shellScript = "# The engine's resources and its kernels, in ONE step, so nothing else ever\n# writes SpektraProbe.app/engine. They used to be two -- a folder-reference copy\n# of Resources/engine in the Resources phase, and this phase adding the metallib\n# -- and Xcode may run those side by side: when the folder copy landed last it\n# replaced the folder and the metallib was gone (\"the engine is not running\").\n# The kernels differ per platform (engine/build-ios.sh: device build/ios,\n# Simulator build/ios-sim), so they are never in Resources/engine.\nsrc=\"${SRCROOT}/Resources/engine\"\nlib=\"${SRCROOT}/../engine/build/${SPK_ENGINE_DIR}/spektrafilm.metallib\"\ndst=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/engine\"\nif [ ! -f \"$src/spektrafilm_constants.bin\" ]; then\n  echo \"error: $src is missing. Run engine/build-ios.sh bundle.\"\n  exit 1\nfi\nif [ ! -f \"$lib\" ]; then\n  echo \"error: $lib is missing. Run engine/build-ios.sh (device) or engine/build-ios.sh sim (Simulator).\"\n  exit 1\nfi\nmkdir -p \"$dst\"\nrsync -a --delete --exclude spektrafilm.metallib \"$src/\" \"$dst/\"\ncp \"$lib\" \"$dst/spektrafilm.metallib\"\n# The licence texts the app must carry (Licences.swift shows them), copied from\n# the repository's own copies so they cannot drift from the code they cover.\nlic=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Licenses\"\nrepo=\"${SRCROOT}/..\"\nmkdir -p \"$lic\"\ncp \"${SRCROOT}/SpektraProbe/Licenses/README.txt\" \"$lic/README.txt\"\ncp \"$repo/license/LICENSE\" \"$lic/GPL-3.0.txt\"\ncp \"$repo/license/SPEKTRAFILM_LICENSE.txt\" \"$lic/Profiles-and-LUTs-CC-BY-SA-4.0.txt\"\ncp \"$repo/modern_UI/Spektrafilm/Spektrafilm/Resources/Licenses/Profiles-and-LUTs-CHANGELOG.txt\" \"$lic/Profiles-and-LUTs-CHANGELOG.txt\"\ncp \"$repo/engine/third_party/metal-cpp/LICENSE.txt\" \"$lic/metal-cpp-Apache-2.0.txt\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -250,6 +257,7 @@
 				CC00000000000000000000A4 /* CameraPanel.swift in Sources */,
 				CC00000000000000000000A6 /* BlackAndWhite.swift in Sources */,
 				CC00000000000000000000A7 /* PhotoInfo.swift in Sources */,
+				CC00000000000000000000A8 /* Licences.swift in Sources */,
 				CC0000000000000000000017 /* LibraryView.swift in Sources */,
 				CC0000000000000000000016 /* Theme.swift in Sources */,
 				CC0000000000000000000003 /* ProbeModel.swift in Sources */,
@@ -346,6 +354,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "RA4 Light Lab saves the pictures you export to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -389,6 +398,7 @@
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "RA4 Light Lab saves the pictures you export to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

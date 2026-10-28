@@ -12,7 +12,7 @@
 "Settings" = "设置";
 "Previous" = "上一张";
 "Next" = "下一张";
-"slide, scanned" = "反转片，扫描";
+"reversal, scanned" = "反转片，扫描";
 "negative, scanned" = "负片，扫描";
 "Show the photo alone" = "只显示照片";
 "Dismiss" = "关闭";
@@ -38,13 +38,13 @@
 /* Film */
 "Film type" = "胶片类型";
 "Negative" = "负片";
-"Positive" = "正片";
+"Reversal" = "反转片";
 "Black & White" = "黑白";
 "Cine" = "电影";
 "Printed on" = "印相相纸";
 "Change" = "更改";
 "No print (scan the film)" = "不印相（直接扫描胶片）";
-"A slide film has no print stage: it is scanned as it is." = "反转片没有印相环节，按原样扫描。";
+"A reversal film has no print stage: it is scanned as it is." = "反转片没有印相环节，按原样扫描。";
 "Scanning the negative itself, orange mask and all." = "直接扫描负片本身，连同橙色片基。";
 
 /* Exposure */
@@ -144,7 +144,8 @@
 "Licences" = "许可证";
 "The app and the engine" = "应用与引擎";
 "Film and paper profiles, print LUTs" = "胶片与相纸配置、印相 LUT";
-"The full licence texts are in the licence folder of the source code." = "完整的许可证文本位于源代码的 license 文件夹中。";
+"The full texts of these licences, and where to get the source code, are in the app." = "这些许可证的完整文本以及源代码的获取方式，都可以在应用内查看。";
+"Licence texts" = "许可证全文";
 "Diagnostics" = "诊断";
 "Render full resolution" = "以全分辨率渲染";
 "Full-resolution render" = "全分辨率渲染";
@@ -306,3 +307,37 @@
 "Full resolution in sRGB, 8 bits, lossless. Larger than a JPEG, no compression artefacts." = "全分辨率 sRGB，8 位，无损。比 JPEG 大，没有压缩瑕疵。";
 "Full resolution in sRGB, 16 bits, lossless (ZIP): the most room for further editing, and the largest file." = "全分辨率 sRGB，16 位，无损（ZIP）：后期调整余地最大，文件也最大。";
 "Full resolution in sRGB, 8 bits, lossless (LZW)." = "全分辨率 sRGB，8 位，无损（LZW）。";
+
+/* Renaming films and papers (Stocks.swift: StockNames, StockRenaming; SettingsSheet) */
+"Rename…" = "重命名…";
+"Restore the original name" = "恢复原名";
+"Rename film" = "重命名胶片";
+"Rename paper" = "重命名相纸";
+"Brand" = "品牌";
+"Save" = "存储";
+"Cancel" = "取消";
+"Only the name changes. ISO %@ and the film's look stay as they are." = "只更改名称。ISO %@ 与胶片的效果保持不变。";
+"Only the name changes. The way it prints stays as it is." = "只更改名称。印相效果保持不变。";
+"Film and paper names" = "胶片与相纸名称";
+"Restore all film and paper names" = "恢复所有胶片与相纸的原名";
+"Hold a film or a paper to rename it. Only the name changes: its ISO and the way it renders stay as they are." = "按住胶片或相纸即可重命名。只更改名称：ISO 与渲染效果保持不变。";
+
+/* Organising the library (LibraryView.swift, Library.swift, ProbeModel) */
+"Date taken" = "拍摄日期";
+"Favourites first" = "收藏优先";
+"Custom order" = "自定义顺序";
+"Could not delete %@: %@" = "无法删除 %@：%@";
+"Sort" = "排序";
+"Favourite" = "收藏";
+"favourite" = "已收藏";
+"Remove from favourites" = "取消收藏";
+"Delete…" = "删除…";
+"Delete" = "删除";
+"Delete “%@”?" = "删除“%@”？";
+"The photo and its edits leave RA4's library. Exports stay, and so does the original in Photos or Files." = "照片及其编辑将从 RA4 的图库中移除。导出的文件会保留，“照片”或“文件”中的原片也会保留。";
+
+/* Audit fixes (ProbeModel: import, scene changes, export) */
+"Importing 1 photo from Files…" = "正在从“文件”导入 1 张照片…";
+"Importing %lld photos from Files…" = "正在从“文件”导入 %lld 张照片…";
+"Developing the photo again…" = "正在重新显影照片…";
+"The export stopped when RA4 left the screen, where apps may not use the graphics processor. Export it again." = "RA4 离开屏幕时导出已停止，因为应用在后台不能使用图形处理器。请重新导出。";

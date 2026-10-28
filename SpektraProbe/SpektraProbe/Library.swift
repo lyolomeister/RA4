@@ -67,14 +67,18 @@ enum Library {
             do { try FileManager.default.copyItem(at: readable, to: destination) } catch { copyError = error }
         }
         if let failure = coordinationError ?? copyError { throw failure }
-        return LibraryPhoto(name: destination.lastPathComponent)
+        let photo = LibraryPhoto(name: destination.lastPathComponent)
+        SidecarStore.dropIfStale(for: photo)
+        return photo
     }
 
     /// Takes a file Photos handed over (valid only while it is being handed).
     static func adopt(_ received: URL) throws -> LibraryPhoto {
         let destination = freshURL(for: received.lastPathComponent)
         try FileManager.default.copyItem(at: received, to: destination)
-        return LibraryPhoto(name: destination.lastPathComponent)
+        let photo = LibraryPhoto(name: destination.lastPathComponent)
+        SidecarStore.dropIfStale(for: photo)
+        return photo
     }
 
     /// Removes a photo, its saved edits and its thumbnail.
@@ -123,6 +127,16 @@ struct Sidecar: Codable {
             return true
         }
 
+        /// Whether two records can be the same photograph's: a size or a
+        /// first 64 KB that differ say they are not. Not the inode, which a
+        /// backup restored to a new iPad changes for every file. A record
+        /// that lacks a field (an older build's) cannot rule anything out.
+        func couldBeSamePhoto(as other: Source) -> Bool {
+            if let a = size, let b = other.size, a != b { return false }
+            if let a = headDigest, let b = other.headDigest, a != b { return false }
+            return true
+        }
+
         static func of(_ url: URL) -> Source {
             var source = Source()
             if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) {
@@ -159,8 +173,11 @@ enum SidecarStore {
     /// The photo's saved edits: by its name, else — for a renamed photo — the
     /// edits of a photo that no longer exists and is the same file.
     static func load(for photo: LibraryPhoto) -> Sidecar? {
-        if let saved = read(url(for: photo)) { return saved }
         let here = Sidecar.Source.of(photo.url)
+        if let saved = read(url(for: photo)) {
+            if saved.source.couldBeSamePhoto(as: here) { return saved }
+            forget(photo)
+        }
         guard here.inode != nil, let files = try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: nil) else { return nil }
         for file in files where file.pathExtension == "json" {
@@ -187,6 +204,17 @@ enum SidecarStore {
     static func forget(_ photo: LibraryPhoto) {
         try? FileManager.default.removeItem(at: url(for: photo))
         Thumbnails.forget(photo)
+    }
+
+    /// A name is the store's key, so a photo that arrives under a name an
+    /// earlier one had — deleted in Files rather than here, with the camera's
+    /// numbering since come round again — would open with that photo's crop
+    /// and film. Its edits and thumbnail are dropped when the file under the
+    /// name is plainly another photograph.
+    static func dropIfStale(for photo: LibraryPhoto) {
+        guard let saved = read(url(for: photo)),
+              !saved.source.couldBeSamePhoto(as: .of(photo.url)) else { return }
+        forget(photo)
     }
 
     /// Whether the photo has edits of its own — the filmstrip's dot.
@@ -310,5 +338,125 @@ enum Thumbnails {
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
         return context.makeImage()
+    }
+}
+
+// MARK: - favourites, order and sorting
+
+/// How the library is ordered. `custom` is the order a person dragged.
+enum LibrarySort: String, Codable, CaseIterable, Identifiable, Sendable {
+    case name, date, favorites, custom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .name: String(localized: "Name")
+        case .date: String(localized: "Date taken")
+        case .favorites: String(localized: "Favourites first")
+        case .custom: String(localized: "Custom order")
+        }
+    }
+}
+
+/// The library's own facts, beside the photos: the favourites, the order a
+/// person dragged, how it is sorted, and each photo's capture date (read once
+/// from the file and kept). Keyed by the photo's name in the library, as the
+/// sidecars are. Application Support/Library.json, read leniently.
+struct LibraryIndex: Codable, Equatable, Sendable {
+    var sort = LibrarySort.name
+    var favorites: Set<String> = []
+    var order: [String] = []
+    var dates: [String: Date] = [:]
+
+    static var url: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appending(path: "Library.json")
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sort = (try? c.decodeIfPresent(LibrarySort.self, forKey: .sort)) ?? .name
+        favorites = (try? c.decodeIfPresent(Set<String>.self, forKey: .favorites)) ?? []
+        order = (try? c.decodeIfPresent([String].self, forKey: .order)) ?? []
+        dates = (try? c.decodeIfPresent([String: Date].self, forKey: .dates)) ?? [:]
+    }
+
+    static func load() -> LibraryIndex {
+        guard let data = try? Data(contentsOf: url) else { return LibraryIndex() }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode(LibraryIndex.self, from: data)) ?? LibraryIndex()
+    }
+
+    func save() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(self) else { return }
+        try? data.write(to: Self.url, options: .atomic)
+    }
+
+    /// Forgets the photos that are no longer in the library.
+    mutating func prune(keeping names: Set<String>) {
+        favorites.formIntersection(names)
+        order.removeAll { !names.contains($0) }
+        dates = dates.filter { names.contains($0.key) }
+    }
+
+    /// The photos in this index's order:
+    /// - name: as Files sorts them (camera numbering);
+    /// - date taken: oldest first, as a roll was shot; a photo without a date last;
+    /// - favourites first: the favourites, then the rest, each by name;
+    /// - custom: the dragged order, with photos added since at the end by name.
+    func arranged(_ photos: [LibraryPhoto]) -> [LibraryPhoto] {
+        let byName = photos.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        switch sort {
+        case .name:
+            return byName
+        case .date:
+            return byName.enumerated().sorted { a, b in
+                switch (dates[a.element.name], dates[b.element.name]) {
+                case let (x?, y?) where x != y: return x < y
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: return a.offset < b.offset
+                }
+            }.map(\.element)
+        case .favorites:
+            return byName.filter { favorites.contains($0.name) } + byName.filter { !favorites.contains($0.name) }
+        case .custom:
+            let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+            return byName.enumerated().sorted { a, b in
+                switch (rank[a.element.name], rank[b.element.name]) {
+                case let (x?, y?): return x < y
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: return a.offset < b.offset
+                }
+            }.map(\.element)
+        }
+    }
+}
+
+extension Library {
+    /// When the photo was taken: the camera's own clock (EXIF
+    /// DateTimeOriginal, read as written, no time zone), else the file's date.
+    static func captureDate(of url: URL) -> Date? {
+        if let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+           let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any],
+           let raw = exif[kCGImagePropertyExifDateTimeOriginal] as? String {
+            let parse = DateFormatter()
+            parse.locale = Locale(identifier: "en_US_POSIX")
+            parse.timeZone = TimeZone(secondsFromGMT: 0)
+            parse.dateFormat = "yyyy:MM:dd HH:mm:ss"
+            if let date = parse.date(from: raw) { return date }
+        }
+        let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        return values?.creationDate ?? values?.contentModificationDate
     }
 }

@@ -18,6 +18,13 @@ import UIKit
 final class EngineBox: @unchecked Sendable {
     var engine: Engine?
     var transforms: [String: ColourTransform] = [:]
+    /// The photo the engine's session holds, and the camera decode it was
+    /// read with — set when an open has finished, cleared the moment one
+    /// starts to replace the session. A failed open compares these with what
+    /// the screen shows, because an open that fails after the engine took the
+    /// new frame leaves the engine on a photo the screen is not showing.
+    var sessionFile: URL?
+    var sessionCamera: CameraDecode?
 }
 
 /// A marker on disk while a memory-heavy step runs. iOS ends an app that
@@ -90,7 +97,8 @@ struct OpenOutcome {
     var peakFootprint: UInt64 = 0
     /// The working space, as the engine's open reply names it.
     var workingSpace = ColourTransform.defaultWorkingSpace
-    var sourceEXIF: [CFString: Any]?
+    /// What the export carries from the photo (`ImageExport.sourceMetadata`).
+    var sourceMetadata: [CFString: Any]?
     var preview = PreviewOutcome()
     var display: ColourTransform?
     /// The settings the frame was opened with (the film format derived from
@@ -224,6 +232,10 @@ final class ProbeModel: ObservableObject {
     @Published private(set) var edited: Set<String> = []
     @Published private(set) var canUndo = false
     @Published private(set) var canRedo = false
+    /// How the library is ordered, and its favourites (`LibraryIndex`).
+    @Published private(set) var librarySort = LibrarySort.name
+    @Published private(set) var favorites: Set<String> = []
+    private var libraryIndex = LibraryIndex.load()
 
     // MARK: geometry, viewer and camera decode
 
@@ -277,6 +289,13 @@ final class ProbeModel: ObservableObject {
     /// is not shown as the edit's.
     private var previewGeneration = 0
     private var beforeTask: Task<Void, Never>?
+    /// Engine calls running now, and how many times the app has gone to the
+    /// background. iOS lets no app use the GPU there, so engine work that was
+    /// running when the app left the screen cannot be trusted, and an export
+    /// that spans a trip to the background is not kept.
+    private var engineJobs = 0
+    private var backgroundEntries = 0
+    private var engineWorkInterrupted = false
 
     /// Undo keeps whole states, one per burst of edits: a slider drag, or a
     /// run of taps less than 0.7 s apart, is one step.
@@ -316,6 +335,8 @@ final class ProbeModel: ObservableObject {
     init() {
         renderer = try? Renderer(device: device)
         crashNote = ProbeModel.describeLeftover(InFlight.takeLeftover())
+        librarySort = libraryIndex.sort
+        favorites = libraryIndex.favorites
         deviceLines = ProbeModel.describeDevice(device)
         if renderer == nil { error = String(localized: "The canvas shaders did not load.") }
         Task {
@@ -359,6 +380,8 @@ final class ProbeModel: ObservableObject {
         if let name = value("--open") {
             await open(LibraryPhoto(name: name))
             showingInfo = arguments.contains("--show-info")
+            if arguments.contains("--selftest-names") { runNamesSelfTest(keep: arguments.contains("--keep-names")) }
+            if arguments.contains("--clear-test-names") { clearTestNames() }
             return true
         }
         if let name = value("--selftest-info") {
@@ -393,6 +416,14 @@ final class ProbeModel: ObservableObject {
         if let name = value("--selftest-stocks") {
             await open(LibraryPhoto(name: name))
             if hasPhoto { await runStocksSelfTest() }
+            return true
+        }
+        if let name = value("--selftest-organize") {
+            await runOrganizeSelfTest(LibraryPhoto(name: name))
+            return true
+        }
+        if let name = value("--selftest-stale") {
+            runStaleEditsSelfTest(LibraryPhoto(name: name))
             return true
         }
         if arguments.contains("--selftest-raws") {
@@ -710,6 +741,152 @@ final class ProbeModel: ObservableObject {
         saveResults()
     }
 
+    /// `--selftest-stale <file>`: a photo deleted outside RA4 (in Files) leaves
+    /// its edits behind under its name. The same photo imported again under
+    /// that name keeps them; a different photo under it must not get them.
+    /// On copies named `stale-test.<ext>`, removed afterwards.
+    private func runStaleEditsSelfTest(_ source: LibraryPhoto) {
+        var lines: [String] = []
+        let fm = FileManager.default
+        let ext = source.url.pathExtension
+        let staging = fm.temporaryDirectory.appending(path: "stale-test", directoryHint: .isDirectory)
+        try? fm.removeItem(at: staging)
+        try? fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        let named = staging.appending(path: "stale-test.\(ext)")
+        func size(_ url: URL) -> Int { (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1 }
+        guard let other = photos.first(where: { size($0.url) != size(source.url) }) else {
+            exportLines = ["stale: no second photo of another size in the library"]
+            saveResults()
+            return
+        }
+        do {
+            try fm.copyItem(at: source.url, to: named)
+            let first = try Library.importCopy(of: named)
+            var edited = FilmSettings()
+            edited.selectFilm("kodak_ektar_100")
+            SidecarStore.save(settings: edited, adjustments: Adjustments(), geometry: Geometry(),
+                              camera: CameraDecode(), for: first)
+            lines.append("\(first.name): edits saved (film \(SidecarStore.load(for: first)?.settings.filmStock ?? "none"))")
+            try fm.removeItem(at: first.url)       // deleted in Files: the edits stay behind
+            let again = try Library.importCopy(of: named)
+            let kept = SidecarStore.load(for: again)?.settings.filmStock
+            lines.append("the same photo imported again as \(again.name): film \(kept ?? "none") \(kept == "kodak_ektar_100" ? "✓ kept" : "✗")")
+            try fm.removeItem(at: again.url)
+            try fm.removeItem(at: named)
+            try fm.copyItem(at: other.url, to: named)
+            let different = try Library.importCopy(of: named)
+            let inherited = SidecarStore.load(for: different)
+            lines.append("\(other.name) imported as \(different.name): edits \(inherited == nil ? "none ✓" : "film \(inherited!.settings.filmStock) ✗ inherited"), sidecar file \(fm.fileExists(atPath: SidecarStore.url(for: different).path) ? "still there ✗" : "gone ✓")")
+            try Library.remove(different)
+        } catch {
+            lines.append("stale: failed: \(error.localizedDescription)")
+        }
+        try? fm.removeItem(at: staging)
+        refreshLibrary()
+        lines.append("library afterwards: \(photos.map(\.name).joined(separator: ", "))")
+        exportLines = lines
+        saveResults()
+    }
+
+    /// `--selftest-organize <file>`: favourites, the four sorts, a drag and two
+    /// deletes, on two copies of `file` made for the test — never on the
+    /// person's own photos. The library's sort and favourites are put back.
+    private func runOrganizeSelfTest(_ source: LibraryPhoto) async {
+        var lines: [String] = []
+        let originalSort = libraryIndex.sort, originalFavorites = libraryIndex.favorites
+        guard let a = try? Library.importCopy(of: source.url), let b = try? Library.importCopy(of: source.url) else {
+            exportLines = ["could not copy \(source.name)"]
+            saveResults()
+            return
+        }
+        refreshLibrary()
+        func names() -> String { photos.map(\.name).joined(separator: ", ") }
+        lines.append("copies \(a.name), \(b.name); library: \(names())")
+        toggleFavorite(b)
+        setLibrarySort(.favorites)
+        lines.append("favourite \(b.name), favourites first → first is \(photos.first?.name ?? "?") \(photos.first == b ? "✓" : "✗")")
+        setLibrarySort(.name)
+        lines.append("by name: \(names())")
+        for _ in 0..<40 where libraryIndex.dates.count < photos.count { try? await Task.sleep(for: .milliseconds(50)) }
+        setLibrarySort(.date)
+        lines.append("by date taken: " + photos.map { photo in
+            let date = libraryIndex.dates[photo.name].map { $0.formatted(.iso8601.year().month().day()) } ?? "no date"
+            return "\(photo.name) (\(date))"
+        }.joined(separator: ", "))
+        if let first = photos.first, first != a {
+            movePhoto(a.name, to: first.name)
+            let stored = LibraryIndex.load()
+            lines.append("dragged \(a.name) to the top → sort \(librarySort.rawValue), first \(photos.first?.name ?? "?") \(photos.first == a ? "✓" : "✗"); saved order starts \(stored.order.first ?? "?"), saved sort \(stored.sort.rawValue)")
+        }
+        await open(a)
+        let afterA = photos.firstIndex(of: a).flatMap { $0 + 1 < photos.count ? photos[$0 + 1] : nil }
+        await delete(a)
+        lines.append("deleted the open \(a.name): file \(FileManager.default.fileExists(atPath: a.url.path) ? "still there ✗" : "gone ✓"), edits \(FileManager.default.fileExists(atPath: SidecarStore.url(for: a).path) ? "still there ✗" : "gone ✓"), in the order \(libraryIndex.order.contains(a.name) ? "still ✗" : "no ✓"); now open: \(current?.name ?? "nothing") (expected \(afterA?.name ?? "nothing"))")
+        await delete(b)
+        lines.append("deleted \(b.name) (not open): file \(FileManager.default.fileExists(atPath: b.url.path) ? "still there ✗" : "gone ✓"), favourite \(favorites.contains(b.name) ? "still ✗" : "no ✓")")
+        libraryIndex.favorites = originalFavorites.intersection(Set(photos.map(\.name)))
+        favorites = libraryIndex.favorites
+        setLibrarySort(originalSort)
+        lines.append("put back: sort \(librarySort.rawValue), favourites \(favorites.sorted()); library: \(names())")
+        exportLines = lines
+        saveResults()
+    }
+
+    /// `--open <file> --selftest-names [--keep-names]`: renames Portra 400 and
+    /// Supra Endura, checks that the ISO and the wire id stay the catalogue's,
+    /// that an empty name keeps the original and that the original name
+    /// undoes a rename, and that it is all stored. The first line lists the
+    /// names already there at launch, which is how a relaunch shows they were
+    /// kept. Without `--keep-names` the three stocks it touched get back
+    /// exactly what they had; no other name is ever touched, so a person's
+    /// own renames survive the test.
+    private func runNamesSelfTest(keep: Bool) {
+        let names = StockNames.shared, catalog = StockCatalog.shared
+        var lines = ["renamed at launch: " + Self.describe(names.renamed)]
+        guard let portra = catalog.stock("kodak_portra_400"), let supra = catalog.stock("kodak_supra_endura"),
+              let ektar = catalog.stock("kodak_ektar_100") else { return }
+        let before = [portra.id, supra.id, ektar.id].map { ($0, names.renamed[$0]) }
+        names.rename(portra, brand: "Brand K", name: "Daylight 400")
+        names.rename(supra, brand: "", name: "Gloss Paper")
+        lines.append("Portra 400 shows \"\(names.label(portra).full)\"; ISO \(StockNames.speed(of: portra) ?? "?"); wire id \(portra.id); settings send \(settings.filmStock)")
+        lines.append("Supra Endura shows \"\(names.label(supra).full)\"")
+        names.rename(ektar, brand: "X", name: "  ")
+        lines.append("Ektar given an empty name shows \"\(names.label(ektar).full)\"")
+        names.rename(ektar, brand: "Kodak", name: "Ektar 100")
+        lines.append("Ektar given its own name back: still renamed \(names.isRenamed(ektar.id))")
+        lines.append("stored in UserDefaults: \(UserDefaults.standard.data(forKey: "RA4.stockNames") != nil)")
+        if !keep {
+            for (id, label) in before { names.put(id, label) }
+            lines.append("put back as they were: \(before.allSatisfy { names.renamed[$0.0] == $0.1 }); "
+                         + "now renamed: " + Self.describe(names.renamed))
+        }
+        exportLines = lines
+        saveResults()
+    }
+
+    /// `--clear-test-names`: takes off the names a `--keep-names` run left —
+    /// only where a stock still carries exactly the test's name, so a name a
+    /// person gave is never touched.
+    private func clearTestNames() {
+        let names = StockNames.shared
+        let test = ["kodak_portra_400": StockLabel(brand: "Brand K", name: "Daylight 400"),
+                    "kodak_supra_endura": StockLabel(brand: "", name: "Gloss Paper")]
+        var lines = ["renamed at launch: " + Self.describe(names.renamed)]
+        var cleared: [String] = []
+        for (id, label) in test.sorted(by: { $0.key < $1.key }) where names.renamed[id] == label {
+            names.restore(id)
+            cleared.append(id)
+        }
+        lines.append("test names taken off: \(cleared)")
+        lines.append("still renamed: " + Self.describe(names.renamed))
+        exportLines = lines
+        saveResults()
+    }
+
+    private static func describe(_ renamed: [String: StockLabel]) -> String {
+        renamed.isEmpty ? "none" : renamed.map { "\($0.key) → \"\($0.value.full)\"" }.sorted().joined(separator: "; ")
+    }
+
     /// `--selftest-stocks`: what choosing a film does to the print. A slide
     /// then a negative must print again, on the negative's own paper; a
     /// negative scanned by choice stays scanned on the next negative; a slide
@@ -825,17 +1002,24 @@ final class ProbeModel: ObservableObject {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let p = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return "unreadable" }
         let tiff = p[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
+        let exif = p[kCGImagePropertyExifDictionary] as? [CFString: Any]
         func v(_ x: Any?) -> String { x.map { "\($0)" } ?? "-" }
+        let serial = exif?[kCGImagePropertyExifBodySerialNumber] ?? exif?[kCGImagePropertyExifLensSerialNumber]
         return "read back: \(CGImageSourceGetType(source).map { $0 as String } ?? "?") "
             + "\(v(p[kCGImagePropertyPixelWidth]))×\(v(p[kCGImagePropertyPixelHeight])), "
             + "\(v(p[kCGImagePropertyDepth])) bits, compression \(v(tiff?[kCGImagePropertyTIFFCompression])), "
-            + "profile \(v(p[kCGImagePropertyProfileName])), EXIF \(p[kCGImagePropertyExifDictionary] == nil ? "no" : "yes")"
+            + "profile \(v(p[kCGImagePropertyProfileName])), EXIF \(exif == nil ? "no" : "yes"), "
+            + "camera \(v(tiff?[kCGImagePropertyTIFFMake])) \(v(tiff?[kCGImagePropertyTIFFModel])), "
+            + "lens \(v(exif?[kCGImagePropertyExifLensModel])), "
+            + "serial \(serial == nil ? "none ✓" : "\(serial!) ✗")"
     }
 
     // MARK: running work on the engine's queue
 
     private func onEngine<T>(_ work: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+        engineJobs += 1
+        defer { engineJobs -= 1 }
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
             queue.async { continuation.resume(with: Result(catching: work)) }
         }
     }
@@ -942,9 +1126,22 @@ final class ProbeModel: ObservableObject {
             ]
         } catch {
             self.error = String(localized: "Could not open \(photo.name): \(String(describing: error))")
+            await closeIfEngineLeft()
         }
         busy = nil
         saveResults()
+    }
+
+    /// After a failed open or reread: the photo on screen stays only while the
+    /// engine still holds it as it was read. A decode that fails leaves the
+    /// engine alone; an open that fails once the engine has let go of the old
+    /// frame (or taken the new one) would otherwise send every later edit and
+    /// export to a picture the screen does not show.
+    private func closeIfEngineLeft() async {
+        guard hasPhoto, let current else { return }
+        let box = self.box
+        let held = try? await onEngine { (box.sessionFile, box.sessionCamera) }
+        if held?.0 != current.url || held?.1 != appliedCamera { closePhoto() }
     }
 
     // MARK: edits — undo, saving, thumbnails
@@ -1071,17 +1268,54 @@ final class ProbeModel: ObservableObject {
         captureThumbnail()
     }
 
-    func appLeavingScreen() {
-        leaveCurrentPhoto()
-        // The zoomed canvas's full-resolution print is about 1 GB with its
-        // canvas copies; a background app that holds it is the first to go.
-        fullPrint = nil
+    /// The window's scene phase, from the interface:
+    /// - **inactive** (Control Center, the app switcher, a call): the edits
+    ///   and the thumbnail are saved, while the GPU may still be used — an app
+    ///   can be ended from the switcher without ever reaching the background;
+    /// - **background**: the zoomed canvas's full-resolution print goes — about
+    ///   1 GB with its canvas copies, and a background app that holds it is the
+    ///   first to be ended — and any engine work still running is marked as
+    ///   untrustworthy;
+    /// - **active** again: photos added in Files are picked up, and a photo
+    ///   whose engine work was cut off is developed again, edits kept.
+    func sceneChanged(to phase: ScenePhase) {
+        switch phase {
+        case .active:
+            refreshLibrary()
+            if engineWorkInterrupted {
+                engineWorkInterrupted = false
+                Task { await reopenForCamera(again: true) }
+            }
+        case .inactive:
+            leaveCurrentPhoto()
+        case .background:
+            backgroundEntries += 1
+            fullPrint = nil
+            if engineJobs > 0 { engineWorkInterrupted = true }
+        @unknown default:
+            break
+        }
     }
 
     // MARK: the library
 
     func refreshLibrary() {
-        photos = Library.photos()
+        let all = Library.photos()
+        let before = libraryIndex
+        libraryIndex.prune(keeping: Set(all.map(\.name)))
+        if libraryIndex != before { libraryIndex.save() }
+        photos = libraryIndex.arranged(all)
+        favorites = libraryIndex.favorites
+        librarySort = libraryIndex.sort
+        // Capture dates are read once per photo, in the background.
+        let undated = all.filter { libraryIndex.dates[$0.name] == nil }
+        if !undated.isEmpty {
+            Task.detached(priority: .utility) { [weak self] in
+                var found: [String: Date] = [:]
+                for photo in undated { if let date = Library.captureDate(of: photo.url) { found[photo.name] = date } }
+                await self?.addCaptureDates(found)
+            }
+        }
         edited = Set(photos.filter(SidecarStore.isEdited).map(\.name))
         let missing = photos.filter { thumbnails[$0.name] == nil }
         Task.detached(priority: .utility) { [weak self] in
@@ -1089,6 +1323,120 @@ final class ProbeModel: ObservableObject {
                 guard let image = Thumbnails.load(for: photo) else { continue }
                 await self?.setThumbnail(image, for: photo.name)
             }
+        }
+    }
+
+    // MARK: the library's order, favourites and deleting
+
+    private func addCaptureDates(_ found: [String: Date]) {
+        guard !found.isEmpty else { return }
+        libraryIndex.dates.merge(found) { old, _ in old }
+        libraryIndex.save()
+        if librarySort == .date { photos = libraryIndex.arranged(photos) }
+    }
+
+    func setLibrarySort(_ sort: LibrarySort) {
+        libraryIndex.sort = sort
+        librarySort = sort
+        photos = libraryIndex.arranged(photos)
+        libraryIndex.save()
+    }
+
+    func isFavorite(_ photo: LibraryPhoto) -> Bool { favorites.contains(photo.name) }
+
+    func toggleFavorite(_ photo: LibraryPhoto) {
+        if libraryIndex.favorites.contains(photo.name) {
+            libraryIndex.favorites.remove(photo.name)
+        } else {
+            libraryIndex.favorites.insert(photo.name)
+        }
+        favorites = libraryIndex.favorites
+        if librarySort == .favorites { photos = libraryIndex.arranged(photos) }
+        libraryIndex.save()
+    }
+
+    /// A drag in a list (`onMove`): the list as it now stands becomes the
+    /// custom order, and the library is sorted by it.
+    func movePhotos(from source: IndexSet, to destination: Int) {
+        var list = photos
+        list.move(fromOffsets: source, toOffset: destination)
+        applyCustomOrder(list)
+    }
+
+    /// A drag in a grid: `name` takes `target`'s place, the photos between
+    /// moving up or down one.
+    func movePhoto(_ name: String, to target: String) {
+        guard let from = photos.firstIndex(where: { $0.name == name }),
+              let to = photos.firstIndex(where: { $0.name == target }), from != to else { return }
+        var list = photos
+        list.insert(list.remove(at: from), at: to)
+        applyCustomOrder(list)
+    }
+
+    private func applyCustomOrder(_ list: [LibraryPhoto]) {
+        libraryIndex.order = list.map(\.name)
+        libraryIndex.sort = .custom
+        librarySort = .custom
+        photos = list
+        libraryIndex.save()
+    }
+
+    /// Takes a photo out of the library: its file in RA4's folder, its edits
+    /// and its thumbnail. Exports stay, and so does anything in Photos or
+    /// elsewhere in Files it was imported from. The interface asks first. An
+    /// open photo hands the canvas to its neighbour, or to nothing.
+    func delete(_ photo: LibraryPhoto) async {
+        guard busy == nil, photos.contains(photo) else { return }
+        var neighbour: LibraryPhoto?
+        if current == photo, let i = photos.firstIndex(of: photo) {
+            neighbour = i + 1 < photos.count ? photos[i + 1] : (i > 0 ? photos[i - 1] : nil)
+            closePhoto()
+        }
+        do {
+            try Library.remove(photo)
+        } catch {
+            self.error = String(localized: "Could not delete \(photo.name): \(error.localizedDescription)")
+            refreshLibrary()
+            return
+        }
+        thumbnails[photo.name] = nil
+        edited.remove(photo.name)
+        libraryIndex.favorites.remove(photo.name)
+        libraryIndex.order.removeAll { $0 == photo.name }
+        libraryIndex.dates[photo.name] = nil
+        libraryIndex.save()
+        if UserDefaults.standard.string(forKey: Self.lastPhotoKey) == photo.name {
+            UserDefaults.standard.removeObject(forKey: Self.lastPhotoKey)
+        }
+        refreshLibrary()
+        if let neighbour { await open(neighbour) }
+    }
+
+    /// Nothing open: the canvas empty, the photo's pending work dropped
+    /// rather than saved (it is on its way out, or already saved), and the
+    /// engine's frame let go.
+    private func closePhoto() {
+        burstTimer?.cancel()
+        saveTimer?.cancel()
+        thumbnailTimer?.cancel()
+        current = nil
+        hasPhoto = false
+        print = nil
+        fullPrint = nil
+        before = nil
+        opened = nil
+        showingInfo = false
+        undoStack = []
+        redoStack = []
+        burstBase = nil
+        committed = nil
+        updateUndoFlags()
+        // The engine's copy of the frame goes too; the next open makes its own.
+        let box = self.box
+        queue.async {
+            box.engine?.close()
+            box.sessionFile = nil
+            box.sessionCamera = nil
         }
     }
 
@@ -1107,31 +1455,43 @@ final class ProbeModel: ObservableObject {
     }
 
     /// Files chosen in Files: copied into the library, the first one opened.
+    /// The copying runs off the main thread — a RAW in iCloud Drive is
+    /// downloaded first, which can take a while — with the busy line saying
+    /// so. While something else runs (an export), the import waits for it
+    /// rather than being dropped.
     func importFiles(_ urls: [URL]) async {
-        var first: LibraryPhoto?
-        for url in urls {
-            do {
-                let photo = try Library.importCopy(of: url)
-                first = first ?? photo
-            } catch {
-                self.error = String(localized: "Could not import \(url.lastPathComponent): \(error.localizedDescription)")
+        guard !urls.isEmpty else { return }
+        await waitUntilIdle()
+        busy = urls.count == 1 ? String(localized: "Importing 1 photo from Files…")
+                               : String(localized: "Importing \(urls.count) photos from Files…")
+        let results = await Task.detached(priority: .userInitiated) {
+            urls.map { url in (url, Result { try Library.importCopy(of: url) }) }
+        }.value
+        busy = nil
+        var imported: [LibraryPhoto] = []
+        for (url, result) in results {
+            switch result {
+            case .success(let photo): imported.append(photo)
+            case .failure(let failure):
+                error = String(localized: "Could not import \(url.lastPathComponent): \(failure.localizedDescription)")
             }
         }
-        refreshLibrary()
-        if let first { await open(first) }
+        await finishImport(imported)
     }
 
     /// Photos chosen in Photos: their original files (the RAW when there is
-    /// one) copied into the library, the first one opened.
+    /// one) copied into the library, the first one opened. Waits, like an
+    /// import from Files, while something else runs.
     func importFromPhotos(_ items: [PhotosPickerItem]) async {
-        guard !items.isEmpty, busy == nil else { return }
+        guard !items.isEmpty else { return }
+        await waitUntilIdle()
         busy = items.count == 1 ? String(localized: "Importing 1 photo from Photos…")
                                 : String(localized: "Importing \(items.count) photos from Photos…")
-        var first: LibraryPhoto?
+        var imported: [LibraryPhoto] = []
         var failed = 0
         for item in items {
             if let picked = try? await item.loadTransferable(type: PickedPhoto.self) {
-                first = first ?? picked.photo
+                imported.append(picked.photo)
             } else {
                 failed += 1
             }
@@ -1141,8 +1501,20 @@ final class ProbeModel: ObservableObject {
             error = failed == 1 ? String(localized: "1 photo could not be imported from Photos.")
                                 : String(localized: "\(failed) photos could not be imported from Photos.")
         }
+        await finishImport(imported)
+    }
+
+    /// The imported photos join the library — with no thumbnail left over from
+    /// an earlier photo of the same name — and the first one opens.
+    private func finishImport(_ imported: [LibraryPhoto]) async {
+        for photo in imported { thumbnails[photo.name] = nil }
         refreshLibrary()
-        if let first { await open(first) }
+        if let first = imported.first { await open(first) }
+    }
+
+    /// Until nothing else is running: an open, an export, a camera reread.
+    private func waitUntilIdle() async {
+        while busy != nil { try? await Task.sleep(for: .milliseconds(100)) }
     }
 
     /// At launch: the photo that was open last, else the library's first.
@@ -1326,11 +1698,17 @@ final class ProbeModel: ObservableObject {
         let out = geometry.outputSize(for: sourceSize)
         busy = String(format: String(localized: "Exporting %.1f MP as sRGB %@…"),
                       Double(out.width * out.height) / 1e6, options.summary)
+        let entries = backgroundEntries
         do {
             let outcome = try await onEngine {
                 try ProbeModel.exportFull(opened: opened, film: film, paper: paper, options: options,
                                           uniforms: uniforms, geometry: geometry, box: box,
                                           renderer: renderer, device: device)
+            }
+            // Part of it may have run where the GPU is refused: not kept.
+            guard backgroundEntries == entries else {
+                if let url = outcome.url { try? FileManager.default.removeItem(at: url) }
+                throw Engine.Failure(description: "the app left the screen")
             }
             lastExport = outcome.url
             lastExportSummary = String(format: String(localized: "%d × %d · %.1f MB · %@"),
@@ -1348,7 +1726,9 @@ final class ProbeModel: ObservableObject {
                 "Saved in Files › On My iPad › \(AppName.current) › Exports",
             ]
         } catch {
-            self.error = String(localized: "Export failed: \(String(describing: error))")
+            self.error = backgroundEntries != entries
+                ? String(localized: "The export stopped when RA4 left the screen, where apps may not use the graphics processor. Export it again.")
+                : String(localized: "Export failed: \(String(describing: error))")
         }
         busy = nil
         saveResults()
@@ -1531,21 +1911,30 @@ final class ProbeModel: ObservableObject {
     /// the engine on it, keeping every other edit — the Mac's redecode. One at
     /// a time; a change made meanwhile is read when this one lands. Engine
     /// pushes wait meanwhile (`rendering`), and go together after.
-    func reopenForCamera() async {
+    ///
+    /// `again`: read it even though the decode has not changed — the engine's
+    /// work on it was cut off when the app left the screen (`sceneChanged`).
+    func reopenForCamera(again: Bool = false) async {
+        // The photo is the one open once the cut-off work has finished, which
+        // may be the very open that was cut off.
+        if again { while reopening || busy != nil || opening { try? await Task.sleep(for: .milliseconds(50)) } }
         guard hasPhoto, let photo = current else { return }
         if reopening { pendingReopen = true; return }
         reopening = true
         while rendering { try? await Task.sleep(for: .milliseconds(30)) }
         rendering = true
         let device = self.device, box = self.box, edge = previewEdge
+        var force = again
         repeat {
             pendingReopen = false
             let camera = self.camera, settings = self.settings
             // Checked in the same main-actor turn as the engine call below, so
             // an open cannot slip in between: while another photo is opening,
             // this one's reread is dropped (its edit is already saved with it).
-            if camera == appliedCamera || current != photo || opening { break }
-            busy = String(localized: "Developing with the new white balance…")
+            if (camera == appliedCamera && !force) || current != photo || opening || !hasPhoto { break }
+            busy = force ? String(localized: "Developing the photo again…")
+                         : String(localized: "Developing with the new white balance…")
+            force = false
             let started = CFAbsoluteTimeGetCurrent()
             do {
                 let outcome = try await onEngine {
@@ -1576,6 +1965,7 @@ final class ProbeModel: ObservableObject {
                                           CFAbsoluteTimeGetCurrent() - started))
             } catch {
                 self.error = String(localized: "Could not apply the white balance: \(String(describing: error))")
+                await closeIfEngineLeft()
                 break
             }
         } while pendingReopen
@@ -1609,7 +1999,7 @@ final class ProbeModel: ObservableObject {
     func requestFullResolution() {
         guard hasPhoto, fullPrint == nil, !fullInFlight, busy == nil, !rendering else { return }
         fullInFlight = true
-        let generation = previewGeneration, box = self.box
+        let generation = previewGeneration, box = self.box, entries = backgroundEntries
         let started = CFAbsoluteTimeGetCurrent()
         Task {
             let rendered = try? await onEngine { () -> Engine.Rendered in
@@ -1617,7 +2007,7 @@ final class ProbeModel: ObservableObject {
                 return try engine.render(tier: "full")
             }
             fullInFlight = false
-            guard let rendered, generation == previewGeneration else { return }
+            guard let rendered, generation == previewGeneration, backgroundEntries == entries else { return }
             fullPrint = rendered.texture
             viewerLines.append(String(format: "Zoomed canvas: full-resolution print %d × %d in %.2f s",
                                       rendered.width, rendered.height, CFAbsoluteTimeGetCurrent() - started))
@@ -1691,7 +2081,7 @@ final class ProbeModel: ObservableObject {
         var outcome = OpenOutcome()
         outcome.file = url.lastPathComponent
         let local = url
-        outcome.sourceEXIF = ImageExport.sourceEXIF(of: local)
+        outcome.sourceMetadata = ImageExport.sourceMetadata(of: local)
 
         progress(String(localized: "Decoding the RAW and opening it in the engine…"))
         InFlight.begin(stage: "decoding and opening", details: ["file": outcome.file])
@@ -1722,6 +2112,8 @@ final class ProbeModel: ObservableObject {
         delta["product_defaults"] = true
         let started = now()
         var reply: [String: Any] = [:]
+        box.sessionFile = nil
+        box.sessionCamera = nil
         try autoreleasepool {
             // The Mac app's path: one shared Metal buffer the engine borrows.
             if bytes <= device.maxBufferLength,
@@ -1755,6 +2147,8 @@ final class ProbeModel: ObservableObject {
         progress(String(localized: "Rendering the preview…"))
         outcome.preview = try preview(engine: engine)
         outcome.latitude = (try? engine.sceneLatitude([:])) ?? [:]
+        box.sessionFile = url
+        box.sessionCamera = camera
         return outcome
     }
 
@@ -1828,7 +2222,7 @@ final class ProbeModel: ObservableObject {
         let convertedAt = now()
         outcome.gpuSeconds = convertedAt - started - outcome.renderSeconds
         let url = try ImageExport.freshURL(for: opened.file, format: options.format)
-        try ImageExport.write(image, to: url, options: options, sourceEXIF: opened.sourceEXIF)
+        try ImageExport.write(image, to: url, options: options, source: opened.sourceMetadata)
         outcome.writeSeconds = now() - convertedAt
         outcome.totalSeconds = now() - started
         (outcome.peak, outcome.minAvailable) = sampler.stop()

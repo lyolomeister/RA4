@@ -4,10 +4,11 @@
 //  The Mac app's `Exporter.write` and `redraw`. The pixels arrive already in
 //  sRGB from `outputTransform`, 16 bits deep; an 8-bit format drops them to 8
 //  bits **in their own space** (a depth reduction, not a conversion), and
-//  ImageIO writes the file with the camera's EXIF. The Mac pairs PNG with 8
-//  bits and TIFF with 16; here TIFF can also be 8, which is a third of the
-//  file for a picture that is going nowhere near another edit. Orientation is
-//  not written: the RAW decode is already upright.
+//  ImageIO writes the file with the camera's EXIF, make and model, but not
+//  its serial numbers. The Mac pairs PNG with 8 bits and TIFF with 16; here
+//  TIFF can also be 8, which is a third of the file for a picture that is
+//  going nowhere near another edit. Orientation is not written: the RAW
+//  decode is already upright.
 //
 //  **TIFF compression follows the depth, not the Mac.** The Mac writes LZW at
 //  16 bits too, and on a 16-bit print LZW makes the file *larger* than no
@@ -120,7 +121,7 @@ enum ImageExport {
     /// Writes `image` (16 bits, already in its destination space) in the
     /// chosen format. Written under a hidden name and moved into place, so a
     /// failure never leaves a truncated file under the real name.
-    static func write(_ image: CGImage, to url: URL, options: ExportOptions, sourceEXIF: [CFString: Any]?) throws {
+    static func write(_ image: CGImage, to url: URL, options: ExportOptions, source: [CFString: Any]?) throws {
         let pixels = try prepared(image, bits: options.bits)
         let partial = url.deletingLastPathComponent()
             .appending(path: ".\(url.lastPathComponent).partial-\(UUID().uuidString.prefix(8))")
@@ -128,7 +129,7 @@ enum ImageExport {
         guard let destination = CGImageDestinationCreateWithURL(partial as CFURL,
                                                                 options.format.utType.identifier as CFString, 1, nil)
         else { throw Failure(description: "could not create \(url.lastPathComponent)") }
-        CGImageDestinationAddImage(destination, pixels, properties(options, sourceEXIF: sourceEXIF) as CFDictionary)
+        CGImageDestinationAddImage(destination, pixels, properties(options, source: source) as CFDictionary)
         guard CGImageDestinationFinalize(destination) else {
             throw Failure(description: "could not write \(url.lastPathComponent)")
         }
@@ -143,25 +144,25 @@ enum ImageExport {
         guard let destination = CGImageDestinationCreateWithData(data as CFMutableData,
                                                                  options.format.utType.identifier as CFString, 1, nil)
         else { return nil }
-        CGImageDestinationAddImage(destination, pixels, properties(options, sourceEXIF: nil) as CFDictionary)
+        CGImageDestinationAddImage(destination, pixels, properties(options, source: nil) as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return data.length
     }
 
-    private static func properties(_ options: ExportOptions, sourceEXIF: [CFString: Any]?) -> [CFString: Any] {
-        var properties: [CFString: Any] = [:]
+    private static func properties(_ options: ExportOptions, source: [CFString: Any]?) -> [CFString: Any] {
+        // The photo's own (`sourceMetadata`): ImageIO writes the file's own
+        // pixel dimensions over its EXIF ones. No GPS: the RAW's GPS
+        // dictionary is a separate one and is not copied.
+        var properties = source ?? [:]
         if options.format == .jpeg {
             properties[kCGImageDestinationLossyCompressionQuality] = min(max(options.quality / 100, 0.1), 1)
         }
         // Lossless either way: Deflate at 16 bits, LZW at 8 (the header says why).
         if options.format == .tiff {
-            properties[kCGImagePropertyTIFFDictionary] =
-                [kCGImagePropertyTIFFCompression: ExportFormat.tiffCompression(bits: options.bits)]
+            var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+            tiff[kCGImagePropertyTIFFCompression] = ExportFormat.tiffCompression(bits: options.bits)
+            properties[kCGImagePropertyTIFFDictionary] = tiff
         }
-        // EXIF is a side channel, passed through unchanged (as the Mac app does);
-        // ImageIO writes the file's own pixel dimensions. No GPS: the RAW's GPS
-        // dictionary is a separate one and is not copied.
-        if let sourceEXIF { properties[kCGImagePropertyExifDictionary] = sourceEXIF }
         return properties
     }
 
@@ -186,12 +187,30 @@ enum ImageExport {
         return context.makeImage()
     }
 
-    /// The RAW's EXIF block, read once at open, for the export to carry.
-    static func sourceEXIF(of url: URL) -> [CFString: Any]? {
+    /// What an export carries from the photo, read once at open: its EXIF
+    /// block — exposure, lens, the time it was taken — **without the camera's
+    /// and the lens's serial numbers**, which identify the equipment and have
+    /// no place in a picture that is shared; and from its TIFF block the
+    /// camera's make and model, which live there and not in EXIF (without
+    /// them Lightroom and Photos show no camera), plus the photographer's own
+    /// credit, artist and copyright.
+    static func sourceMetadata(of url: URL) -> [CFString: Any]? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         else { return nil }
-        return properties[kCGImagePropertyExifDictionary] as? [CFString: Any]
+        var kept: [CFString: Any] = [:]
+        if var exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+            exif[kCGImagePropertyExifBodySerialNumber] = nil
+            exif[kCGImagePropertyExifLensSerialNumber] = nil
+            kept[kCGImagePropertyExifDictionary] = exif
+        }
+        if let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+            let wanted = [kCGImagePropertyTIFFMake, kCGImagePropertyTIFFModel,
+                          kCGImagePropertyTIFFArtist, kCGImagePropertyTIFFCopyright]
+            let camera = tiff.filter { wanted.contains($0.key) }
+            if !camera.isEmpty { kept[kCGImagePropertyTIFFDictionary] = camera }
+        }
+        return kept.isEmpty ? nil : kept
     }
 }
 

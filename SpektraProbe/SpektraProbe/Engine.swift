@@ -81,6 +81,10 @@ final class Engine: @unchecked Sendable {
         session = handle
     }
 
+    /// Lets go of the open frame and everything the engine holds for it —
+    /// about 1 GB for a 60 MP photo — when nothing is open any more.
+    func close() { replaceSession(nil) }
+
     /// Opens a frame whose float32 RGBA pixels are in `buffer` (on `device`).
     /// The engine borrows the buffer for this call only.
     @discardableResult

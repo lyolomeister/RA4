@@ -11,6 +11,7 @@ struct SettingsSheet: View {
     @Environment(\.openURL) private var openURL
     @State private var copied = false
     @AppStorage(EnlargerTransition.enabledKey) private var enlargerAnimation = true
+    @ObservedObject private var names = StockNames.shared
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -56,6 +57,15 @@ struct SettingsSheet: View {
                 }
 
                 Section {
+                    Button("Restore all film and paper names") { names.restoreAll() }
+                        .disabled(names.renamed.isEmpty)
+                } header: {
+                    Text("Film and paper names")
+                } footer: {
+                    Text("Hold a film or a paper to rename it. Only the name changes: its ISO and the way it renders stay as they are.")
+                }
+
+                Section {
                     Text("Built on SpektraLab by Hanze Qiu, a native C++ and Metal port of spektrafilm by Andrea Volpato, whose film model, colour profiles and print LUTs RA4 renders with. The black-and-white profiles are by Hanze Qiu. Not affiliated with or endorsed by either project.")
                         .font(.callout)
                     Link(destination: URL(string: "https://github.com/lyolomeister/SpektraLab")!) {
@@ -75,10 +85,11 @@ struct SettingsSheet: View {
                     LabeledContent { Text(verbatim: "GPL-3.0-or-later") } label: { Text("The app and the engine") }
                     LabeledContent { Text(verbatim: "CC BY-SA 4.0") } label: { Text("Film and paper profiles, print LUTs") }
                     LabeledContent { Text(verbatim: "Apache-2.0") } label: { Text(verbatim: "metal-cpp") }
+                    NavigationLink { LicencesView() } label: { Text("Licence texts") }
                 } header: {
                     Text("Licences")
                 } footer: {
-                    Text("The full licence texts are in the licence folder of the source code.")
+                    Text("The full texts of these licences, and where to get the source code, are in the app.")
                 }
 
                 Section {
