@@ -159,6 +159,19 @@ final class Engine: @unchecked Sendable {
         return (parsed, Array(UnsafeBufferPointer(start: pointer, count: Int(count))))
     }
 
+    /// `spk_scene_latitude` (RFC-023): measure the scene against the session's
+    /// medium, suggest pull-backs, and solve the ones in `request` — never
+    /// render. `request` may name `highlight_pull_back` and `shadow_pull_back`;
+    /// a side left out is the engine's suggestion.
+    func sceneLatitude(_ request: [String: Any]) throws -> [String: Any] {
+        guard let session else { throw Failure(description: "no photo is open") }
+        var out: UnsafeMutablePointer<CChar>?
+        guard Engine.json(request).withCString({ spk_scene_latitude(session, $0, &out) }) == SPK_OK else {
+            throw Failure(description: lastError())
+        }
+        return reply(out)
+    }
+
     /// `spk_memory_report`, parsed: what the engine itself holds.
     func memoryReport() -> [String: Any] {
         guard let engine else { return [:] }

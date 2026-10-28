@@ -21,6 +21,8 @@
 		CC000000000000000000000E /* CanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000E /* CanvasView.swift */; };
 		CC000000000000000000000F /* JPEGExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000000F /* JPEGExport.swift */; };
 		CC0000000000000000000010 /* Canvas.metal in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000010 /* Canvas.metal */; };
+		CC0000000000000000000012 /* FilmSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000012 /* FilmSettings.swift */; };
+		CC0000000000000000000013 /* StockCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* StockCatalog.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +43,8 @@
 		BB000000000000000000000E /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
 		BB000000000000000000000F /* JPEGExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JPEGExport.swift; sourceTree = "<group>"; };
 		BB0000000000000000000010 /* Canvas.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Canvas.metal; sourceTree = "<group>"; };
+		BB0000000000000000000012 /* FilmSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmSettings.swift; sourceTree = "<group>"; };
+		BB0000000000000000000013 /* StockCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = StockCatalog.json; path = ../modern_UI/Spektrafilm/Spektrafilm/Resources/StockCatalog.json; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +63,7 @@
 			children = (
 				AA0000000000000000000004 /* SpektraProbe */,
 				BB000000000000000000000A /* engine */,
+				BB0000000000000000000013 /* StockCatalog.json */,
 				AA0000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -81,6 +86,7 @@
 				BB0000000000000000000005 /* RAWDecode.swift */,
 				BB0000000000000000000006 /* Memory.swift */,
 				BB0000000000000000000007 /* Stocks.swift */,
+				BB0000000000000000000012 /* FilmSettings.swift */,
 				BB000000000000000000000B /* Adjustments.swift */,
 				BB000000000000000000000C /* ColourTransform.swift */,
 				BB000000000000000000000D /* Renderer.swift */,
@@ -147,6 +153,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CC000000000000000000000A /* engine in Resources */,
+				CC0000000000000000000013 /* StockCatalog.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -164,6 +171,7 @@
 				CC0000000000000000000005 /* RAWDecode.swift in Sources */,
 				CC0000000000000000000006 /* Memory.swift in Sources */,
 				CC0000000000000000000007 /* Stocks.swift in Sources */,
+				CC0000000000000000000012 /* FilmSettings.swift in Sources */,
 				CC000000000000000000000B /* Adjustments.swift in Sources */,
 				CC000000000000000000000C /* ColourTransform.swift in Sources */,
 				CC000000000000000000000D /* Renderer.swift in Sources */,

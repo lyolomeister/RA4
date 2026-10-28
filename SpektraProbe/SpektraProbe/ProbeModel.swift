@@ -91,6 +91,11 @@ struct OpenOutcome {
     var sourceEXIF: [CFString: Any]?
     var preview = PreviewOutcome()
     var display: ColourTransform?
+    /// The settings the frame was opened with (the film format derived from
+    /// its aspect), and exactly what was sent, so later edits go as deltas.
+    var settings = FilmSettings()
+    var sentWire: [String: ParamValue] = [:]
+    var latitude: [String: Any] = [:]
 }
 
 struct PreviewOutcome {
@@ -99,6 +104,8 @@ struct PreviewOutcome {
     var width = 0, height = 0
     var seconds = 0.0
     var engineMs = 0.0
+    /// The Scene Latitude measurement taken after it (`spk_scene_latitude`).
+    var latitude: [String: Any] = [:]
 }
 
 struct FullOutcome {
@@ -134,8 +141,9 @@ struct ExportOutcome {
 
 @MainActor
 final class ProbeModel: ObservableObject {
-    @Published var film = Stocks.defaultFilm
-    @Published var paper = Stocks.defaultPaper
+    /// The engine's settings for the open frame (Layer 1): film and paper,
+    /// camera, format, the film's effects, Scene Placement, print. Sent as deltas.
+    @Published var settings = FilmSettings()
     @Published var adjustments = Adjustments()
     /// JPEG quality, 10…100. The Mac app's default is 0.95.
     @Published var exportQuality: Double = 95
@@ -143,6 +151,16 @@ final class ProbeModel: ObservableObject {
     @Published var error: String?
     @Published var crashNote: String?
     @Published var hasPhoto = false
+    /// A settings change is rendering. Unlike `busy`, the controls stay live,
+    /// so a slider keeps tracking and its latest value is what renders next.
+    @Published private(set) var rendering = false
+    /// Scene Placement's sliders while dragged; the committed pull-backs are
+    /// `settings.placement`'s, and a refused fit puts these back on them.
+    @Published var highlightDraft = 0.0
+    @Published var shadowDraft = 0.0
+    /// Why the last placement was refused, in words, or nil.
+    @Published private(set) var placementNote: String?
+    @Published private(set) var latitudeLines: [String] = []
 
     /// What the canvas draws: the live print and the working space → P3 transform.
     @Published private(set) var print: MTLTexture?
@@ -161,6 +179,17 @@ final class ProbeModel: ObservableObject {
     private let box = EngineBox()
     private var opened: OpenOutcome?
     private var previewEdge = 2560
+    /// What the engine was last told, field by field.
+    private var sentWire: [String: ParamValue] = [:]
+    /// An edit arrived while a render was running.
+    private var pendingPush = false
+
+    /// long ÷ short of the open photograph, for the film format (the Mac's
+    /// `physicalAspect`; a crop does not count, which is its default too).
+    var aspect: Double {
+        guard let opened, opened.width > 0, opened.height > 0 else { return 1.5 }
+        return Double(max(opened.width, opened.height)) / Double(min(opened.width, opened.height))
+    }
 
     init() {
         renderer = try? Renderer(device: device)
@@ -178,10 +207,22 @@ final class ProbeModel: ObservableObject {
     /// export it untouched at quality 95, then with a few adjustments at quality
     /// 60, so the whole chain can be checked without anyone tapping. A launch
     /// from the Home Screen never has the argument.
+    ///
+    /// `--open <file in Documents>` only opens the file — for showing the app
+    /// launched from the Mac (a demo, a screenshot) without anyone tapping.
     private func runSelfTestIfAsked() async {
         let arguments = ProcessInfo.processInfo.arguments
-        guard let i = arguments.firstIndex(of: "--selftest"), i + 1 < arguments.count else { return }
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        if let i = arguments.firstIndex(of: "--open"), i + 1 < arguments.count {
+            await load(documents.appending(path: arguments[i + 1]))
+            return
+        }
+        if let i = arguments.firstIndex(of: "--selftest-film"), i + 1 < arguments.count {
+            await load(documents.appending(path: arguments[i + 1]))
+            if hasPhoto { await runFilmSelfTest() }
+            return
+        }
+        guard let i = arguments.firstIndex(of: "--selftest"), i + 1 < arguments.count else { return }
         await load(documents.appending(path: arguments[i + 1]))
         guard hasPhoto else { return }
         exportQuality = 95
@@ -190,6 +231,44 @@ final class ProbeModel: ObservableObject {
                                   shadows: 30, saturation: -10, vibrance: 60)
         exportQuality = 60
         await exportJPEG()
+    }
+
+    /// `--selftest-film`: one export each of a black-and-white film on its
+    /// paper, a slide film scanned, and a colour negative on 120 with EDR,
+    /// doubled grain and the engine's suggested Scene Placement.
+    private func runFilmSelfTest() async {
+        var lines: [String] = []
+        func record(_ what: String) {
+            lines.append(what + ": " + (exportLines.first ?? error ?? "no export"))
+        }
+        exportQuality = 90
+        selectFilm("kodak_tri_x_400")
+        await settle()
+        await exportJPEG()
+        record("Tri-X 400 / \(StockCatalog.shared.name(settings.printStock))")
+        selectFilm("fujifilm_velvia_100")
+        await settle()
+        await exportJPEG()
+        record("Velvia 100 / scanned: \(settings.scanFilm)")
+        selectFilm("kodak_portra_400")
+        selectPaper("kodak_portra_endura")
+        setFrame("120")
+        settings.extendedDynamicRange = true
+        settings.effects.grain = 2
+        await settle()
+        await suggestPlacement()
+        lines.append("suggest: " + (placementNote ?? "applied"))
+        if !settings.placement.active {
+            await place(highlight: 3.5, shadow: 0)
+            lines.append("highlights 3.5: " + (placementNote ?? "applied"))
+        }
+        await settle()
+        await exportJPEG()
+        record(String(format: "Portra 400 / Portra Endura, 120 (%.1f mm), EDR, grain 2, placement %.2f/%.2f",
+                      settings.filmFormatMM, settings.placement.highlightPullBack,
+                      settings.placement.shadowPullBack))
+        exportLines = lines + latitudeLines.map { "latitude: " + $0 }
+        saveResults()
     }
 
     // MARK: running work on the engine's queue
@@ -231,15 +310,23 @@ final class ProbeModel: ObservableObject {
         guard busy == nil else { return }
         error = nil
         previewEdge = ProbeModel.screenLongEdgePixels()
-        let film = self.film, paper = self.paper, edge = previewEdge
+        let settings = self.settings, edge = previewEdge
         let device = self.device, box = self.box, progress = progressReporter()
         busy = "Copying \(url.lastPathComponent) into the app…"
         do {
             let outcome = try await onEngine {
-                try ProbeModel.openAndPreview(url, film: film, paper: paper, edge: edge,
+                try ProbeModel.openAndPreview(url, settings: settings, edge: edge,
                                               device: device, box: box, progress: progress)
             }
             opened = outcome
+            // What was sent first, then the settings, so the change this makes
+            // is already on the engine and sends nothing.
+            sentWire = outcome.sentWire
+            self.settings = outcome.settings
+            highlightDraft = outcome.settings.placement.highlightPullBack
+            shadowDraft = outcome.settings.placement.shadowPullBack
+            placementNote = nil
+            readLatitude(outcome.latitude)
             hasPhoto = true
             // Each photo starts as the pure simulation; edits are not stored yet.
             adjustments = Adjustments()
@@ -266,28 +353,149 @@ final class ProbeModel: ObservableObject {
         saveResults()
     }
 
-    func stocksChanged() async {
+    /// A settings edit: send what changed, render the preview, and measure the
+    /// scene again. One render at a time; edits made meanwhile go together when
+    /// it lands, so a slider drag renders its latest value, never a backlog.
+    func settingsChanged() async {
         guard hasPhoto, busy == nil else { return }
-        error = nil
-        let film = self.film, paper = self.paper, box = self.box
-        busy = "Re-rendering on \(Stocks.name(film)) / \(Stocks.name(paper))…"
-        do {
-            let outcome = try await onEngine {
-                try ProbeModel.restock(film: film, paper: paper, box: box)
+        if rendering { pendingPush = true; return }
+        rendering = true
+        let box = self.box
+        repeat {
+            pendingPush = false
+            let wire = settings.wire
+            let delta = settings.delta(from: sentWire)
+            if delta.isEmpty { break }
+            do {
+                let outcome = try await onEngine { try ProbeModel.push(delta, box: box) }
+                sentWire = wire
+                fullLines = []
+                show(outcome)
+                readLatitude(outcome.latitude)
+            } catch {
+                self.error = "Could not apply the change: \(error)"
+                break
             }
-            fullLines = []
-            show(outcome)
-        } catch {
-            self.error = "Could not change stock: \(error)"
-        }
-        busy = nil
+        } while pendingPush
+        rendering = false
         saveResults()
     }
 
+    /// Sends any pending change and waits until the engine has rendered it.
+    func settle() async {
+        await settingsChanged()
+        while rendering { try? await Task.sleep(for: .milliseconds(50)) }
+    }
+
+    func selectFilm(_ id: String) { settings.selectFilm(id) }
+    func selectPaper(_ id: String) { settings.selectPaper(id) }
+    /// "No print profile": scan the developed film.
+    func selectNoPrint() { settings.scanFilm = true }
+    func setFrame(_ id: String) { settings.setFrame(id, aspect: aspect) }
+    func setSide(_ side: FilmSide) { settings.setSide(side, aspect: aspect) }
+    func setSideLength(_ mm: Double) { settings.setSideLength(mm, aspect: aspect) }
+    /// The Mac's "As shot": the meter off and no compensation, so Film
+    /// Exposure is the linear frame as the camera recorded it.
+    func filmExposureAsShot() {
+        settings.metering = .custom
+        settings.exposureCompensationEV = 0
+    }
+    func resetEffects() { settings.effects = EffectStrengths() }
+
+    // MARK: Scene Placement
+
+    /// Through the engine's Fit (RFC-023): only a fit the engine accepts is
+    /// committed. A refusal puts the sliders back and says why in words.
+    func place(highlight: Double, shadow: Double) async {
+        await placeWith(["highlight_pull_back": highlight, "shadow_pull_back": shadow])
+    }
+
+    /// The engine's own suggestion for this frame: a request naming neither
+    /// side is solved at the suggested pull-backs.
+    func suggestPlacement() async {
+        await placeWith([:])
+    }
+
+    func resetPlacement() {
+        settings.placement = ScenePlacement()
+        highlightDraft = 0
+        shadowDraft = 0
+        placementNote = nil
+    }
+
+    private func placeWith(_ request: [String: Any]) async {
+        guard hasPhoto else { return }
+        await settle()      // the Fit reads the session as it is now
+        let box = self.box
+        do {
+            let reply = try await onEngine { try ProbeModel.sceneLatitude(request, box: box) }
+            readLatitude(reply)
+            let fit = reply["fit"] as? [String: Any] ?? [:]
+            func pullBack(_ side: String) -> Double {
+                ((fit[side] as? [String: Any])?["pull_back"] as? NSNumber)?.doubleValue ?? 0
+            }
+            if (fit["valid"] as? Bool) == true, let delta = fit["params_delta"] as? [String: Any] {
+                placementNote = nil
+                settings.placement.apply(highlight: pullBack("highlight"), shadow: pullBack("shadow"),
+                                         delta: delta)
+            } else {
+                let issue = (fit["issues"] as? [[String: Any]])?.first ?? [:]
+                placementNote = ProbeModel.placementMessage(code: issue["code"] as? String,
+                                                            side: issue["side"] as? String,
+                                                            fallback: issue["message"] as? String)
+            }
+        } catch {
+            placementNote = "Scene Placement failed: \(error)"
+        }
+        highlightDraft = settings.placement.highlightPullBack
+        shadowDraft = settings.placement.shadowPullBack
+    }
+
+    /// The Mac's refusal sentences (`LatitudeModel.message`), in English.
+    private static func placementMessage(code: String?, side: String?, fallback: String?) -> String {
+        let top = side != "shadow"
+        switch code {
+        case "pull_back_below_minimum":
+            return top ? "Pull back further: the scene's brightest part is still past the latitude's edge."
+                       : "Pull back further: the scene's darkest part is still past the latitude's edge."
+        case "room_below_minimum":
+            return top ? "Pull back a little more: this close to the latitude's edge the highlights would turn too sharply."
+                       : "Pull back a little more: this close to the latitude's edge the shadows would turn too sharply."
+        case "out_of_range":
+            return "Pull back less: this is further than the curve can reach."
+        case "pull_back_exceeds_max_lift":
+            return "Pull back less: this is past the most the shadows can be lifted."
+        case "knees_cross":
+            return "The highlight and shadow curves would cross: pull back less on one side."
+        default:
+            return fallback.map { "Not applied: \($0)" } ?? "Not applied."
+        }
+    }
+
+    /// The measurement, in the numbers a person can act on.
+    private func readLatitude(_ reply: [String: Any]) {
+        guard let medium = reply["medium"] as? [String: Any],
+              let fit = reply["fit"] as? [String: Any] else { return }
+        func d(_ o: Any?) -> Double { (o as? NSNumber)?.doubleValue ?? .nan }
+        let high = fit["highlight"] as? [String: Any] ?? [:], low = fit["shadow"] as? [String: Any] ?? [:]
+        var lines = [
+            String(format: "Film + paper latitude: %.1f stops (%+.1f … %+.1f EV around mid-grey)",
+                   d(medium["latitude_stops"]), d(medium["shadow_ev"]), d(medium["highlight_ev"])),
+            String(format: "This scene: darkest %+.1f EV, brightest %+.1f EV",
+                   d(low["scene_extreme_ev"]), d(high["scene_extreme_ev"])),
+        ]
+        if let suggested = reply["suggested"] as? [String: Any], (suggested["valid"] as? Bool) == true {
+            lines.append(String(format: "Suggested pull-back: highlights %.2f, shadows %.2f stops",
+                                d(suggested["highlight_pull_back"]), d(suggested["shadow_pull_back"])))
+        }
+        latitudeLines = lines
+    }
+
     func exportJPEG() async {
+        await settle()      // the export renders what the controls say
         guard hasPhoto, busy == nil, let opened, let renderer else { return }
         error = nil
-        let film = self.film, paper = self.paper, quality = exportQuality / 100
+        let film = settings.filmStock, paper = settings.printStock, quality = exportQuality / 100
         let uniforms = adjustments.uniforms, box = self.box, device = self.device
         busy = String(format: "Exporting %.1f MP as an sRGB JPEG…", Double(opened.width * opened.height) / 1e6)
         do {
@@ -315,9 +523,10 @@ final class ProbeModel: ObservableObject {
     }
 
     func renderFull() async {
+        await settle()
         guard hasPhoto, busy == nil, let opened else { return }
         error = nil
-        let film = self.film, paper = self.paper, box = self.box
+        let film = settings.filmStock, paper = settings.printStock, box = self.box
         busy = String(format: "Rendering %.1f MP at full resolution…", Double(opened.width * opened.height) / 1e6)
         do {
             let outcome = try await onEngine {
@@ -336,7 +545,7 @@ final class ProbeModel: ObservableObject {
                          : "Result: FAILED — \(outcome.error)")
             lines.append("Engine pool high-water: \(Memory.mb(outcome.enginePoolHighWater)); engine holding now: \(Memory.mb(outcome.engineTotal))")
             lines.append("Footprint after render: \(Memory.mb(outcome.footprintAfter)); peak since launch: \(Memory.mb(outcome.lifetimePeak))")
-            lines.append("Film / paper: \(Stocks.name(film)) / \(Stocks.name(paper))")
+            lines.append("Film / paper: \(StockCatalog.shared.name(film)) / \(StockCatalog.shared.name(paper))")
             fullLines = lines
         } catch {
             self.error = "Full render could not start: \(error)"
@@ -350,7 +559,11 @@ final class ProbeModel: ObservableObject {
         previewLines = [
             String(format: "Preview (live tier): %d × %d in %.0f ms (engine %.0f ms)",
                    preview.width, preview.height, preview.seconds * 1000, preview.engineMs),
-            "Film / paper: \(Stocks.name(film)) / \(Stocks.name(paper))",
+            "Film / paper: \(StockCatalog.shared.name(settings.filmStock)) / "
+                + (settings.scanFilm ? "no print (film scan)" : StockCatalog.shared.name(settings.printStock)),
+            String(format: "Format: %@ %@ %.1f mm → long edge %.1f mm; meter %@, film exposure %+.2f EV",
+                   settings.filmFrame, settings.filmSide.title, settings.sideLengthMM, settings.filmFormatMM,
+                   settings.metering.title, settings.exposureCompensationEV),
         ]
     }
 
@@ -367,7 +580,9 @@ final class ProbeModel: ObservableObject {
         if let crashNote { text += ["", "PREVIOUS RUN:", crashNote] }
         if let error { text += ["", "ERROR: \(error)"] }
         for (title, lines) in [("Device", deviceLines), ("Photo", photoLines), ("Preview", previewLines),
-                               ("Export", exportLines), ("Full-resolution render", fullLines)]
+                               ("Scene latitude", latitudeLines + (placementNote.map { ["Placement: " + $0] } ?? [])),
+                               ("Export", exportLines),
+                               ("Full-resolution render", fullLines)]
             where !lines.isEmpty {
             text += ["", title + ":"] + lines.map { "  " + $0 }
         }
@@ -398,7 +613,7 @@ final class ProbeModel: ObservableObject {
         return made
     }
 
-    nonisolated private static func openAndPreview(_ url: URL, film: String, paper: String, edge: Int,
+    nonisolated private static func openAndPreview(_ url: URL, settings: FilmSettings, edge: Int,
                                                    device: MTLDevice, box: EngineBox,
                                                    progress: @escaping (String) -> Void) throws -> OpenOutcome {
         guard let engine = box.engine else { throw Engine.Failure(description: "the engine is not running") }
@@ -420,8 +635,17 @@ final class ProbeModel: ObservableObject {
         outcome.isRAW = decoded.isRAW
         let bytes = decoded.width * decoded.height * 16
         outcome.frameBytes = bytes
-        let delta: [String: Any] = ["film_stock": film, "print_stock": paper,
-                                    "preview_long_edge": edge, "product_defaults": true]
+        // The film format follows the photograph's own shape (the Mac's
+        // `recomputeFilmFormat(beforeOpen:)`), so it goes in with the open.
+        var settings = settings
+        let aspect = Double(max(decoded.width, decoded.height)) / Double(max(1, min(decoded.width, decoded.height)))
+        settings.filmFormatMM = FilmSettings.filmFormatMM(side: settings.filmSide,
+                                                          sideLengthMM: settings.sideLengthMM, aspect: aspect)
+        outcome.settings = settings
+        outcome.sentWire = settings.wire
+        var delta = settings.delta(from: [:])
+        delta["preview_long_edge"] = edge
+        delta["product_defaults"] = true
         let started = now()
         var reply: [String: Any] = [:]
         try autoreleasepool {
@@ -456,13 +680,22 @@ final class ProbeModel: ObservableObject {
 
         progress("Rendering the preview…")
         outcome.preview = try preview(engine: engine)
+        outcome.latitude = (try? engine.sceneLatitude([:])) ?? [:]
         return outcome
     }
 
-    nonisolated private static func restock(film: String, paper: String, box: EngineBox) throws -> PreviewOutcome {
+    /// A settings delta, then the preview, then the scene measured again.
+    nonisolated private static func push(_ delta: [String: Any], box: EngineBox) throws -> PreviewOutcome {
         guard let engine = box.engine else { throw Engine.Failure(description: "the engine is not running") }
-        try engine.setParams(["film_stock": film, "print_stock": paper])
-        return try preview(engine: engine)
+        try engine.setParams(delta)
+        var outcome = try preview(engine: engine)
+        outcome.latitude = (try? engine.sceneLatitude([:])) ?? [:]
+        return outcome
+    }
+
+    nonisolated private static func sceneLatitude(_ request: [String: Any], box: EngineBox) throws -> [String: Any] {
+        guard let engine = box.engine else { throw Engine.Failure(description: "the engine is not running") }
+        return try engine.sceneLatitude(request)
     }
 
     nonisolated private static func preview(engine: Engine) throws -> PreviewOutcome {
