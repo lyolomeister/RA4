@@ -1,8 +1,9 @@
-# SpektraLab for iPad — a personal port, in progress
+# RA-4 · RA-4光谱暗房 — SpektraLab's film simulation on iPad (a personal port, in progress)
 
 A personal, unofficial port of [SpektraLab](https://github.com/JamesQiu2005/SpektraLab)'s
-spectral film simulation to iPad (and iPhone), built as an app called
-**SpektraProbe**. It runs the original's C++/Metal film engine, **unmodified**,
+spectral film simulation to iPad (and iPhone), as an app called **RA-4**
+(**RA-4光谱暗房** on an iPad set to Chinese) — after the colour print process
+whose paper it simulates. It runs the original's C++/Metal film engine, **unmodified**,
 on the iPad's GPU: a RAW goes through a virtual film negative and a print, with
 its grain, halation and paper, in a second or two at full resolution.
 
@@ -98,7 +99,7 @@ not the Simulator.
 ```bash
 xcodebuild -downloadComponent MetalToolchain   # once: Xcode's Metal compiler
 engine/build-ios.sh                            # the engine, its kernels, the app's resources
-open SpektraProbe/SpektraProbe.xcodeproj
+open SpektraProbe/SpektraProbe.xcodeproj      # the project keeps its working name
 ```
 
 In Xcode, choose your own team and a bundle identifier of your own under
@@ -107,7 +108,7 @@ In Xcode, choose your own team and a bundle identifier of your own under
 
 ### Testing from the Mac
 
-The app saves its numbers to `SpektraProbe results.txt` in its folder, and
+The app saves its numbers to `RA-4 results.txt` in its folder, and
 takes launch arguments that run without anyone tapping:
 
 | | |
@@ -126,7 +127,7 @@ xcrun devicectl device process launch --device <UDID> <bundle id> -- --selftest-
 
 | | |
 |---|---|
-| `SpektraProbe/` | **the iPad / iPhone app** (new) |
+| `SpektraProbe/` | **the RA-4 iPad / iPhone app** (new; the folder, project and bundle identifier keep the working name SpektraProbe) |
 | `engine/build-ios.sh` | **the engine's iPadOS build** (new) |
 | `engine/` | the original C++20 / Metal render engine — unmodified |
 | `modern_UI/` | the original macOS app — unmodified; the reference this port follows |

@@ -1,0 +1,3 @@
+/* The app's name on the Home Screen, in Files and in Settings. */
+"CFBundleDisplayName" = "RA-4";
+"NSPhotoLibraryAddUsageDescription" = "RA-4 saves the JPEGs you export to your photo library when you ask it to.";

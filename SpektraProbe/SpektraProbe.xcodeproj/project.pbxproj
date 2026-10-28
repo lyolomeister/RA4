@@ -24,6 +24,7 @@
 		CC0000000000000000000012 /* FilmSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000012 /* FilmSettings.swift */; };
 		CC0000000000000000000013 /* StockCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000013 /* StockCatalog.json */; };
 		CC0000000000000000000014 /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000014 /* Library.swift */; };
+		CC0000000000000000000015 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000015 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,8 @@
 		BB0000000000000000000012 /* FilmSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmSettings.swift; sourceTree = "<group>"; };
 		BB0000000000000000000013 /* StockCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = StockCatalog.json; path = ../modern_UI/Spektrafilm/Spektrafilm/Resources/StockCatalog.json; sourceTree = SOURCE_ROOT; };
 		BB0000000000000000000014 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+		BB0000000000000000000016 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		BB0000000000000000000017 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,6 +93,7 @@
 				BB0000000000000000000007 /* Stocks.swift */,
 				BB0000000000000000000012 /* FilmSettings.swift */,
 				BB0000000000000000000014 /* Library.swift */,
+				BB0000000000000000000015 /* InfoPlist.strings */,
 				BB000000000000000000000B /* Adjustments.swift */,
 				BB000000000000000000000C /* ColourTransform.swift */,
 				BB000000000000000000000D /* Renderer.swift */,
@@ -138,6 +142,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				"zh-Hans",
 				Base,
 			);
 			mainGroup = AA0000000000000000000002;
@@ -157,6 +162,7 @@
 			files = (
 				CC000000000000000000000A /* engine in Resources */,
 				CC0000000000000000000013 /* StockCatalog.json in Resources */,
+				CC0000000000000000000015 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -186,6 +192,18 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		BB0000000000000000000015 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				BB0000000000000000000016 /* en */,
+				BB0000000000000000000017 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		AA000000000000000000000B /* Debug */ = {
@@ -236,9 +254,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SpektraProbe/Info.plist;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../engine/include";
-				INFOPLIST_KEY_CFBundleDisplayName = SpektraProbe;
+				INFOPLIST_KEY_CFBundleDisplayName = "RA-4";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "SpektraProbe saves the JPEGs you export to your photo library when you ask it to.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "RA-4 saves the JPEGs you export to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -275,9 +293,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = SpektraProbe/Info.plist;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../engine/include";
-				INFOPLIST_KEY_CFBundleDisplayName = SpektraProbe;
+				INFOPLIST_KEY_CFBundleDisplayName = "RA-4";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "SpektraProbe saves the JPEGs you export to your photo library when you ask it to.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "RA-4 saves the JPEGs you export to your photo library when you ask it to.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

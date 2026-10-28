@@ -811,7 +811,7 @@ final class ProbeModel: ObservableObject {
                 String(format: "Time: %.2f s (full render %.2f s, adjustments + sRGB %.2f s, JPEG %.2f s)",
                        outcome.totalSeconds, outcome.renderSeconds, outcome.gpuSeconds, outcome.writeSeconds),
                 "Memory: available before \(Memory.mb(outcome.availableBefore)); peak \(Memory.mb(outcome.peak)); lowest available \(Memory.mb(outcome.minAvailable))",
-                "Saved in Files › On My iPad › SpektraProbe › Exports",
+                "Saved in Files › On My iPad › \(AppName.current) › Exports",
             ]
         } catch {
             self.error = "Export failed: \(error)"
@@ -874,7 +874,7 @@ final class ProbeModel: ObservableObject {
     }
 
     private func resultsText() -> String {
-        var text = ["SpektraProbe results"]
+        var text = ["RA-4 results"]
         if let crashNote { text += ["", "PREVIOUS RUN:", crashNote] }
         if let error { text += ["", "ERROR: \(error)"] }
         let a = adjustments
@@ -895,11 +895,13 @@ final class ProbeModel: ObservableObject {
     }
 
     /// The same text, after every step, in Documents — visible in Files › On My
-    /// iPad › SpektraProbe, and readable from the Mac with `devicectl`.
+    /// iPad › RA-4, and readable from the Mac with `devicectl`.
     private func saveResults() {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? Data((resultsText() + "\n").utf8)
-            .write(to: documents.appending(path: "SpektraProbe results.txt"), options: .atomic)
+            .write(to: documents.appending(path: "RA-4 results.txt"), options: .atomic)
+        // The file's name before the app was named RA-4.
+        try? FileManager.default.removeItem(at: documents.appending(path: "SpektraProbe results.txt"))
     }
 
     // MARK: the engine-queue halves (no main-actor state in here)

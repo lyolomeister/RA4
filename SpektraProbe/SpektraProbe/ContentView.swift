@@ -35,7 +35,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("SpektraProbe")
+            .navigationTitle(AppName.current)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
@@ -96,7 +96,7 @@ struct ContentView: View {
                            uniforms: model.adjustments.uniforms, transform: model.displayTransform)
             }
             if !model.hasPhoto && model.busy == nil {
-                Text("Import a photo: Import › From Files or From Photos.\nPhotos added to Files › On My iPad › SpektraProbe appear here too.")
+                Text("Import a photo: Import › From Files or From Photos.\nPhotos added to Files › On My iPad › \(AppName.current) appear here too.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.7))
                     .padding()
